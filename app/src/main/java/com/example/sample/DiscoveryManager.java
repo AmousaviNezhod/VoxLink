@@ -1,16 +1,12 @@
 package com.example.sample;
 
 import android.content.Context;
-import android.net.wifi.WifiManager;
 import android.util.Log;
 
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.net.NetworkInterface;
-import java.util.Collections;
-import java.util.List;
 
 public class DiscoveryManager {
     private static final String TAG = "DiscoveryManager";
@@ -165,51 +161,14 @@ public class DiscoveryManager {
         return isDiscovering;
     }
 
-    /**
-     * پیدا کردن broadcast آدرس صحیح برای شبکه فعلی.
-     * DhcpInfo بازگشتی اندروید معمولاً little-endian است، بنابراین معکوس می‌شود
-     * و سپس بایت‌ها به صورت big-endian (مورد نیاز InetAddress) استخراج می‌شوند.
-     */
     private InetAddress getBroadcastAddress() {
+        InetAddress broadcast = NetworkHelper.getBroadcastAddress(context);
+        if (broadcast != null) return broadcast;
         try {
-            // روش اول: استفاده از WifiManager
-            WifiManager wifi = (WifiManager) context.getSystemService(Context.WIFI_SERVICE);
-            if (wifi != null) {
-                android.net.DhcpInfo dhcp = wifi.getDhcpInfo();
-                if (dhcp != null && dhcp.ipAddress != 0 && dhcp.netmask != 0) {
-                    int ip = Integer.reverseBytes(dhcp.ipAddress);
-                    int netmask = Integer.reverseBytes(dhcp.netmask);
-                    int broadcast = (ip & netmask) | (~netmask);
-                    byte[] quads = new byte[4];
-                    quads[0] = (byte) ((broadcast >> 24) & 0xFF);
-                    quads[1] = (byte) ((broadcast >> 16) & 0xFF);
-                    quads[2] = (byte) ((broadcast >> 8) & 0xFF);
-                    quads[3] = (byte) (broadcast & 0xFF);
-                    InetAddress addr = InetAddress.getByAddress(quads);
-                    if (!addr.isLoopbackAddress()) {
-                        Log.d(TAG, "Found broadcast address via WifiManager: " + addr.getHostAddress());
-                        return addr;
-                    }
-                }
-            }
-
-            // روش دوم: استفاده از NetworkInterface (برای هات‌اسپات/WiFi Direct)
-            List<NetworkInterface> interfaces = Collections.list(NetworkInterface.getNetworkInterfaces());
-            for (NetworkInterface intf : interfaces) {
-                if (intf.isUp() && !intf.isLoopback()) {
-                    List<java.net.InterfaceAddress> addrs = intf.getInterfaceAddresses();
-                    for (java.net.InterfaceAddress addr : addrs) {
-                        InetAddress broadcast = addr.getBroadcast();
-                        if (broadcast != null && !broadcast.isLoopbackAddress()) {
-                            Log.d(TAG, "Found broadcast address via NetworkInterface: " + broadcast.getHostAddress() + " on " + intf.getDisplayName());
-                            return broadcast;
-                        }
-                    }
-                }
-            }
+            return InetAddress.getByName("255.255.255.255");
         } catch (Exception e) {
-            Log.e(TAG, "Error getting broadcast address: " + e.getMessage());
+            Log.e(TAG, "Error getting fallback broadcast address: " + e.getMessage());
+            return null;
         }
-        return null;
     }
 }

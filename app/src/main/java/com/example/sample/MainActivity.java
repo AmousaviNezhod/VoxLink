@@ -1,12 +1,10 @@
 package com.example.sample;
 
 import android.Manifest;
-import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
-import android.net.ConnectivityManager;
-import android.net.NetworkCapabilities;
+
 import android.os.Build;
 import android.os.Bundle;
 import android.text.Editable;
@@ -100,8 +98,8 @@ public class MainActivity extends AppCompatActivity implements DiscoveryManager.
             btnJoinGroup.setOnClickListener(v -> {
                 pendingPermissionAction = this::startJoinGroup;
                 if (checkAndRequestPermissions()) {
-                    if (!isWifiConnected()) {
-                        setStatus("وای‌فای متصل نیست!", 0xFFEF4444);
+                    if (!NetworkHelper.isLocalNetworkAvailable(this)) {
+                        setStatus("وای‌فای یا هات‌اسپات متصل نیست!", 0xFFEF4444);
                         return;
                     }
                     startJoinGroup();
@@ -208,8 +206,8 @@ public class MainActivity extends AppCompatActivity implements DiscoveryManager.
     }
 
     private void startCreateGroup() {
-        if (!isWifiConnected()) {
-            setStatus("وای‌فای متصل نیست!", 0xFFEF4444);
+        if (!NetworkHelper.isLocalNetworkAvailable(this)) {
+            setStatus("وای‌فای یا هات‌اسپات متصل نیست!", 0xFFEF4444);
             return;
         }
         setStatus("در حال راه‌اندازی گروه...", 0xFFBA7517);
@@ -238,12 +236,7 @@ public class MainActivity extends AppCompatActivity implements DiscoveryManager.
         if (btnCancelSearch != null) btnCancelSearch.setVisibility(View.GONE);
     }
 
-    private boolean isWifiConnected() {
-        ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
-        if (cm == null) return false;
-        NetworkCapabilities caps = cm.getNetworkCapabilities(cm.getActiveNetwork());
-        return caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI);
-    }
+
 
     private void setStatus(String message, int color) {
         if (tvStatus != null) {

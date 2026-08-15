@@ -46,6 +46,7 @@ VoxLink/
 │       ├── AudioRecorder.java          # Microphone recording thread
 │       ├── AudioPlayer.java            # Incoming audio playback
 │       ├── VoxToast.java               # Custom styled toast messages
+│       ├── NetworkHelper.java          # Wi-Fi / hotspot network interface detection
 │       └── Constants.java              # Ports, sample rate, packet sizes
 ├── build.gradle
 ├── settings.gradle
@@ -65,9 +66,10 @@ VoxLink/
 | `SAMPLE_RATE` | `16000` | Audio sample rate (Hz) |
 | `FRAME_SIZE` | `320` | Bytes per audio frame sent over the network |
 
-- **Discovery:** the host broadcasts `VoxLink-Host: <port>` every 2 seconds to the Wi-Fi broadcast address.
+- **Discovery:** the host broadcasts `VoxLink-Host: <port>` every 2 seconds to the Wi-Fi or hotspot broadcast address.
 - **Voice:** each device joins the multicast group `239.255.42.99:50005`, sends its own audio, and plays audio from everyone else.
 - **Control packets:** small packets for ping, join/leave events, and room destruction.
+- **Network selection:** `NetworkHelper` detects the active Wi-Fi / hotspot (`wlan`, `ap`, `eth`, etc.) interface and computes the correct broadcast address, so the host can be the device acting as a mobile hotspot.
 
 ---
 
@@ -82,7 +84,7 @@ The app requests the following permissions at runtime:
 - `NEARBY_WIFI_DEVICES` (Android 13+) or `ACCESS_FINE_LOCATION` (older Android) — for local network discovery
 - `WAKE_LOCK` / `FOREGROUND_SERVICE` — to keep the session alive while the app is in use
 
-> **Important:** The app only works when the device is connected to a Wi-Fi network. Hotspot mode may also work if all devices are on the same local network.
+> **Important:** The app works when all devices are on the same local network — either connected to the same Wi-Fi router, or one device acting as a Wi-Fi hotspot (mobile AP) and the others connected to it. On the host/hotspot device, make sure the hotspot is on before tapping **Create Group**.
 
 ---
 
@@ -114,10 +116,17 @@ For a release APK, create a signing keystore and configure it in `app/build.grad
 
 ## Install
 
-Install the debug APK with `adb`:
+Prebuilt APKs are available in the `releases/` folder:
+
+| File | Description |
+|------|-------------|
+| `releases/VoxLink-v1.0-debug.apk`   | Debug build, signed with Android debug key |
+| `releases/VoxLink-v1.0-release.apk` | Release build, signed with Android debug key (for testing) |
+
+Install with `adb`:
 
 ```bash
-adb install app/build/outputs/apk/debug/app-debug.apk
+adb install releases/VoxLink-v1.0-release.apk
 ```
 
 Or copy the APK to your device and install it manually (allow *Install from unknown sources* if prompted).
@@ -126,9 +135,11 @@ Or copy the APK to your device and install it manually (allow *Install from unkn
 
 ## Usage
 
-1. Make sure all devices are connected to the **same Wi-Fi network**.
+1. Make sure all devices are on the **same local network**:
+   - Connect everyone to the same Wi-Fi router, **or**
+   - Turn on a mobile hotspot on the host/manager device and connect the other devices to it.
 2. Open VoxLink.
-3. On the host device, tap **Create Group (Host)**.
+3. On the host/manager device, tap **Create Group (Host)**.
 4. On the other devices, tap **Join Group** and wait for the room to be discovered.
 5. In the voice room:
    - **Push-to-Talk:** hold the large button while speaking.
