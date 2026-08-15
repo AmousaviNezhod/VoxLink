@@ -9,20 +9,22 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.SocketTimeoutException;
+import java.nio.charset.StandardCharsets;
 
 public class DiscoveryManager {
     private static final String TAG = "DiscoveryManager";
-    private static final int DISCOVERY_PORT = 8888;
-    private static final String MAGIC_WORD = "VoxLink-Host: ";
+    private static final String PROBE = "VoxLink-Probe";
+    private static final String HOST_PREFIX = "VoxLink-Host:";
 
+    private final Context context;
     private DiscoveryListener listener;
     private Thread hostThread;
     private Thread clientThread;
     private DatagramSocket hostSocket;
     private DatagramSocket clientSocket;
-    private boolean isRegistered = false;
-    private boolean isDiscovering = false;
-    private Context context;
+    private volatile boolean isRegistered = false;
+    private volatile boolean isDiscovering = false;
 
     public interface DiscoveryListener {
         void onGroupFound(String hostAddress, int port);
@@ -38,88 +40,14 @@ public class DiscoveryManager {
     public void registerGroup() {
         if (isRegistered) stopAll();
         isRegistered = true;
-
-        hostThread = new Thread(() -> {
-            try {
-                hostSocket = new DatagramSocket();
-                hostSocket.setBroadcast(true);
-
-                String message = MAGIC_WORD + Constants.UDP_PORT;
-                byte[] buffer = message.getBytes();
-
-                // پیدا کردن broadcast آدرس صحیح
-                InetAddress broadcastAddress = getBroadcastAddress();
-                if (broadcastAddress == null) {
-                    broadcastAddress = InetAddress.getByName("255.255.255.255");
-                }
-
-                Log.d(TAG, "UDP Broadcast beacon started to: " + broadcastAddress.getHostAddress());
-
-                while (isRegistered && !Thread.currentThread().isInterrupted()) {
-                    DatagramPacket packet = new DatagramPacket(
-                            buffer, buffer.length, broadcastAddress, DISCOVERY_PORT);
-
-                    hostSocket.send(packet);
-                    Log.d(TAG, "Sent live beacon to network...");
-
-                    Thread.sleep(2000);
-                }
-            } catch (Exception e) {
-                Log.e(TAG, "Host beacon error: " + e.getMessage());
-            } finally {
-                cleanupHost();
-            }
-        });
+        hostThread = new Thread(this::hostLoop);
         hostThread.start();
     }
 
     public void startDiscovery() {
         if (isDiscovering) return;
         isDiscovering = true;
-
-        clientThread = new Thread(() -> {
-            try {
-                clientSocket = new DatagramSocket(null);
-                clientSocket.setReuseAddress(true);
-                clientSocket.bind(new InetSocketAddress(DISCOVERY_PORT));
-
-                byte[] buffer = new byte[1024];
-                Log.d(TAG, "UDP Discovery listening on port " + DISCOVERY_PORT);
-
-                while (isDiscovering && !Thread.currentThread().isInterrupted()) {
-                    DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
-
-                    clientSocket.receive(packet);
-
-                    String data = new String(packet.getData(), 0, packet.getLength());
-
-                    if (data.startsWith(MAGIC_WORD)) {
-                        String hostAddress = packet.getAddress().getHostAddress();
-
-                        int voicePort = Constants.UDP_PORT;
-                        try {
-                            String portStr = data.substring(MAGIC_WORD.length());
-                            voicePort = Integer.parseInt(portStr);
-                        } catch (Exception ignored) {}
-
-                        Log.d(TAG, "Host detected via UDP! IP: " + hostAddress + " Port: " + voicePort);
-
-                        if (listener != null) {
-                            listener.onGroupFound(hostAddress, Constants.UDP_PORT);
-                        }
-
-                        break;
-                    }
-                }
-            } catch (Exception e) {
-                Log.e(TAG, "Client discovery error: " + e.getMessage());
-                if (isDiscovering && listener != null) {
-                    listener.onError(e.getMessage());
-                }
-            } finally {
-                cleanupClient();
-            }
-        });
+        clientThread = new Thread(this::clientLoop);
         clientThread.start();
     }
 
@@ -135,7 +63,137 @@ public class DiscoveryManager {
         cleanupClient();
     }
 
+    private void hostLoop() {
+        try {
+            hostSocket = new DatagramSocket(null);
+            hostSocket.setReuseAddress(true);
+            hostSocket.bind(new InetSocketAddress(Constants.DISCOVERY_PORT));
+            hostSocket.setBroadcast(true);
+            hostSocket.setSoTimeout(1000);
+
+            Log.d(TAG, "Host discovery listening on port " + Constants.DISCOVERY_PORT);
+
+            byte[] buf = new byte[256];
+            long lastBeacon = 0;
+
+            while (isRegistered && !Thread.currentThread().isInterrupted()) {
+                long now = System.currentTimeMillis();
+                if (now - lastBeacon >= 2000) {
+                    sendBeacon();
+                    lastBeacon = now;
+                }
+
+                try {
+                    DatagramPacket packet = new DatagramPacket(buf, buf.length);
+                    hostSocket.receive(packet);
+
+                    String msg = new String(packet.getData(), 0, packet.getLength(), StandardCharsets.UTF_8);
+                    if (PROBE.equals(msg)) {
+                        String reply = HOST_PREFIX + Constants.UDP_PORT;
+                        byte[] replyBytes = reply.getBytes(StandardCharsets.UTF_8);
+                        DatagramPacket replyPacket = new DatagramPacket(
+                                replyBytes, replyBytes.length, packet.getAddress(), packet.getPort());
+                        hostSocket.send(replyPacket);
+                        Log.d(TAG, "Replied to probe from " + packet.getAddress().getHostAddress());
+                    }
+                } catch (SocketTimeoutException ignored) {}
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Host discovery error: " + e.getMessage());
+        } finally {
+            cleanupHost();
+        }
+    }
+
+    private void sendBeacon() {
+        if (hostSocket == null) return;
+        try {
+            InetAddress broadcastAddress = NetworkHelper.getBroadcastAddress(context);
+            if (broadcastAddress == null) {
+                broadcastAddress = InetAddress.getByName("255.255.255.255");
+            }
+
+            String message = HOST_PREFIX + Constants.UDP_PORT;
+            byte[] buffer = message.getBytes(StandardCharsets.UTF_8);
+            DatagramPacket packet = new DatagramPacket(buffer, buffer.length, broadcastAddress, Constants.DISCOVERY_PORT);
+            hostSocket.send(packet);
+            Log.d(TAG, "Sent discovery beacon to " + broadcastAddress.getHostAddress());
+        } catch (Exception e) {
+            Log.e(TAG, "Beacon send error: " + e.getMessage());
+        }
+    }
+
+    private void clientLoop() {
+        try {
+            clientSocket = new DatagramSocket(null);
+            clientSocket.setReuseAddress(true);
+            clientSocket.bind(new InetSocketAddress(0));
+            clientSocket.setBroadcast(true);
+            clientSocket.setSoTimeout(3000);
+
+            sendProbe();
+
+            byte[] buf = new byte[256];
+            long start = System.currentTimeMillis();
+
+            while (isDiscovering && !Thread.currentThread().isInterrupted()) {
+                if (System.currentTimeMillis() - start > 10000) {
+                    if (listener != null) listener.onError("Discovery timeout");
+                    break;
+                }
+
+                try {
+                    DatagramPacket packet = new DatagramPacket(buf, buf.length);
+                    clientSocket.receive(packet);
+
+                    String msg = new String(packet.getData(), 0, packet.getLength(), StandardCharsets.UTF_8);
+                    if (msg.startsWith(HOST_PREFIX)) {
+                        String hostAddress = packet.getAddress().getHostAddress();
+                        int voicePort = Constants.UDP_PORT;
+                        try {
+                            voicePort = Integer.parseInt(msg.substring(HOST_PREFIX.length()));
+                        } catch (Exception ignored) {}
+
+                        Log.d(TAG, "Host found: " + hostAddress + ":" + voicePort);
+                        if (listener != null) {
+                            listener.onGroupFound(hostAddress, voicePort);
+                        }
+                        break;
+                    }
+                } catch (SocketTimeoutException e) {
+                    if (listener != null) listener.onError("Discovery timeout");
+                    break;
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Client discovery error: " + e.getMessage());
+            if (isDiscovering && listener != null) {
+                listener.onError(e.getMessage());
+            }
+        } finally {
+            cleanupClient();
+        }
+    }
+
+    private void sendProbe() {
+        if (clientSocket == null) return;
+        try {
+            InetAddress broadcastAddress = NetworkHelper.getBroadcastAddress(context);
+            if (broadcastAddress == null) {
+                broadcastAddress = InetAddress.getByName("255.255.255.255");
+            }
+
+            byte[] buffer = PROBE.getBytes(StandardCharsets.UTF_8);
+            DatagramPacket packet = new DatagramPacket(buffer, buffer.length, broadcastAddress, Constants.DISCOVERY_PORT);
+            clientSocket.send(packet);
+            Log.d(TAG, "Sent discovery probe");
+        } catch (Exception e) {
+            Log.e(TAG, "Probe send error: " + e.getMessage());
+        }
+    }
+
     private void cleanupHost() {
+        isRegistered = false;
         if (hostThread != null) {
             hostThread.interrupt();
             hostThread = null;
@@ -144,10 +202,10 @@ public class DiscoveryManager {
             hostSocket.close();
             hostSocket = null;
         }
-        isRegistered = false;
     }
 
     private void cleanupClient() {
+        isDiscovering = false;
         if (clientThread != null) {
             clientThread.interrupt();
             clientThread = null;
@@ -156,21 +214,13 @@ public class DiscoveryManager {
             clientSocket.close();
             clientSocket = null;
         }
-        isDiscovering = false;
     }
 
     public boolean isDiscovering() {
         return isDiscovering;
     }
 
-    private InetAddress getBroadcastAddress() {
-        InetAddress broadcast = NetworkHelper.getBroadcastAddress(context);
-        if (broadcast != null) return broadcast;
-        try {
-            return InetAddress.getByName("255.255.255.255");
-        } catch (Exception e) {
-            Log.e(TAG, "Error getting fallback broadcast address: " + e.getMessage());
-            return null;
-        }
+    public boolean isRegistered() {
+        return isRegistered;
     }
 }
