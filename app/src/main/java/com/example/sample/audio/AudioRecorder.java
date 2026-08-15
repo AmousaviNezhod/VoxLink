@@ -3,6 +3,7 @@ package com.example.sample.audio;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
+import android.os.Process;
 import android.util.Log;
 
 import com.example.sample.util.Constants;
@@ -11,25 +12,33 @@ public class AudioRecorder {
     private static final String TAG = "AudioRecorder";
     private AudioRecord audioRecord;
     private Thread recordThread;
-    private boolean isRecording = false;
+    private volatile boolean isRecording = false;
+    private AudioChunkListener listener;
 
     public interface AudioChunkListener {
         void onChunkReady(byte[] audioChunk);
     }
 
-    private AudioChunkListener listener;
-
     public AudioRecorder(AudioChunkListener listener) {
+        this.listener = listener;
+    }
+
+    public void setAudioChunkListener(AudioChunkListener listener) {
         this.listener = listener;
     }
 
     public boolean prepare() {
         try {
-            int bufferSize = AudioRecord.getMinBufferSize(
+            int minBufferSize = AudioRecord.getMinBufferSize(
                     Constants.SAMPLE_RATE,
                     AudioFormat.CHANNEL_IN_MONO,
                     AudioFormat.ENCODING_PCM_16BIT
             );
+            if (minBufferSize < 0) {
+                Log.e(TAG, "Invalid min buffer size");
+                return false;
+            }
+            int bufferSize = Math.max(minBufferSize * 2, Constants.FRAME_SIZE * 2);
 
             audioRecord = new AudioRecord(
                     MediaRecorder.AudioSource.VOICE_COMMUNICATION,
@@ -46,6 +55,8 @@ public class AudioRecorder {
                 return false;
             }
 
+            AudioEffects.attach(audioRecord);
+
             Log.d(TAG, "AudioRecorder prepared with buffer: " + bufferSize);
             return true;
         } catch (Exception e) {
@@ -61,18 +72,7 @@ public class AudioRecorder {
         audioRecord.startRecording();
         isRecording = true;
 
-        recordThread = new Thread(() -> {
-            byte[] buffer = new byte[Constants.FRAME_SIZE * 2];
-            while (isRecording) {
-                int bytesRead = audioRecord.read(buffer, 0, buffer.length);
-                if (bytesRead > 0 && listener != null) {
-                    byte[] chunk = new byte[bytesRead];
-                    System.arraycopy(buffer, 0, chunk, 0, bytesRead);
-                    listener.onChunkReady(chunk);
-                }
-            }
-        });
-
+        recordThread = new Thread(this::recordLoop);
         recordThread.setDaemon(true);
         recordThread.start();
         Log.d(TAG, "Recording started");
@@ -80,14 +80,6 @@ public class AudioRecorder {
 
     public void stopRecording() {
         isRecording = false;
-        if (audioRecord != null && audioRecord.getRecordingState() == AudioRecord.RECORDSTATE_RECORDING) {
-            audioRecord.stop();
-        }
-        Log.d(TAG, "Recording stopped");
-    }
-
-    public void release() {
-        stopRecording();
         if (recordThread != null) {
             try {
                 recordThread.join(500);
@@ -96,13 +88,68 @@ public class AudioRecorder {
             }
             recordThread = null;
         }
+        if (audioRecord != null && audioRecord.getRecordingState() == AudioRecord.RECORDSTATE_RECORDING) {
+            try {
+                audioRecord.stop();
+            } catch (Exception e) {
+                Log.w(TAG, "Error stopping AudioRecord: " + e.getMessage());
+            }
+        }
+        Log.d(TAG, "Recording stopped");
+    }
+
+    public void release() {
+        stopRecording();
         if (audioRecord != null) {
             audioRecord.release();
             audioRecord = null;
         }
+        AudioEffects.release();
     }
 
     public boolean isRecording() {
         return isRecording;
+    }
+
+    private void recordLoop() {
+        Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO);
+
+        int frameBytes = Constants.FRAME_SIZE * 2;
+        int minBufferSize = audioRecord.getBufferSizeInFrames() * 2;
+        int readBufferSize = Math.max(minBufferSize, frameBytes * 4);
+        byte[] readBuffer = new byte[readBufferSize];
+        byte[] leftover = new byte[frameBytes];
+        int leftoverLen = 0;
+
+        while (isRecording) {
+            int bytesRead = audioRecord.read(readBuffer, 0, readBufferSize);
+            if (bytesRead < 0) {
+                Log.w(TAG, "AudioRecord read error: " + bytesRead);
+                continue;
+            }
+            if (bytesRead == 0) {
+                continue;
+            }
+
+            byte[] combined = new byte[leftoverLen + bytesRead];
+            System.arraycopy(leftover, 0, combined, 0, leftoverLen);
+            System.arraycopy(readBuffer, 0, combined, leftoverLen, bytesRead);
+
+            int processed = 0;
+            int totalLen = combined.length;
+            while (totalLen - processed >= frameBytes) {
+                byte[] chunk = new byte[frameBytes];
+                System.arraycopy(combined, processed, chunk, 0, frameBytes);
+                if (listener != null) {
+                    listener.onChunkReady(chunk);
+                }
+                processed += frameBytes;
+            }
+
+            leftoverLen = totalLen - processed;
+            if (leftoverLen > 0) {
+                System.arraycopy(combined, processed, leftover, 0, leftoverLen);
+            }
+        }
     }
 }
