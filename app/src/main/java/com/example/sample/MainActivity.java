@@ -161,13 +161,9 @@ public class MainActivity extends AppCompatActivity implements DiscoveryManager.
     private boolean checkAndRequestPermissions() {
         List<String> permissionsToRequest = new ArrayList<>();
         permissionsToRequest.add(Manifest.permission.RECORD_AUDIO);
-        permissionsToRequest.add(Manifest.permission.CHANGE_WIFI_MULTICAST_STATE);
-        permissionsToRequest.add(Manifest.permission.MODIFY_AUDIO_SETTINGS);
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            permissionsToRequest.add(Manifest.permission.NEARBY_WIFI_DEVICES);
-        } else {
-            permissionsToRequest.add(Manifest.permission.ACCESS_FINE_LOCATION);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            permissionsToRequest.add(Manifest.permission.BLUETOOTH_CONNECT);
         }
 
         List<String> finalPermissions = new ArrayList<>();

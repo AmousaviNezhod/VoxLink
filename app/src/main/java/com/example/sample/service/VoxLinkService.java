@@ -7,6 +7,7 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
+import android.media.AudioManager;
 import android.net.wifi.WifiManager;
 import android.os.Binder;
 import android.os.Build;
@@ -21,6 +22,7 @@ import android.util.Log;
 import androidx.core.app.NotificationCompat;
 
 import com.example.sample.R;
+import com.example.sample.audio.AudioEffects;
 import com.example.sample.audio.AudioMixer;
 import com.example.sample.audio.AudioPlayer;
 import com.example.sample.audio.AudioRecorder;
@@ -62,6 +64,7 @@ public class VoxLinkService extends Service {
     private DiscoveryManager discoveryManager;
     private WifiManager.MulticastLock multicastLock;
     private PowerManager.WakeLock wakeLock;
+    private AudioManager audioManager;
 
     private Room room;
     private String username;
@@ -121,6 +124,22 @@ public class VoxLinkService extends Service {
 
         public void setListener(VoxLinkListener listener) {
             VoxLinkService.this.setListener(listener);
+        }
+
+        public int getMySenderId() {
+            return VoxLinkService.this.mySenderId;
+        }
+
+        public boolean isHost() {
+            return VoxLinkService.this.isHost;
+        }
+
+        public boolean isAlwaysOn() {
+            return VoxLinkService.this.isAlwaysOn;
+        }
+
+        public boolean isLocalMuted() {
+            return VoxLinkService.this.isLocalMuted;
         }
     }
 
@@ -191,6 +210,9 @@ public class VoxLinkService extends Service {
             }
             audioMixer = new AudioMixer(audioPlayer, Constants.FRAME_SIZE);
             audioMixer.start();
+
+            audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+            AudioEffects.configureForCommunication(this, audioManager, true);
 
             udpReceiver = new UdpReceiver(this);
             udpReceiver.setAudioPacketListener((senderId, sequence, payload) -> {
@@ -292,6 +314,9 @@ public class VoxLinkService extends Service {
         if (audioRecorder != null) audioRecorder.release();
         if (audioMixer != null) audioMixer.stop();
         if (audioPlayer != null) audioPlayer.stop();
+        if (audioManager != null) {
+            AudioEffects.configureForCommunication(this, audioManager, false);
+        }
         if (udpReceiver != null) udpReceiver.stop();
         if (udpSender != null) udpSender.close();
         if (discoveryManager != null) discoveryManager.stopAll();

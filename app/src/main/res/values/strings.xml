@@ -28,6 +28,17 @@
     <string name="leave_room">Leave Room</string>
     <string name="live">LIVE</string>
     <string name="user_prefix">User </string>
+    <string name="host">Host</string>
+    <string name="user">User</string>
+    <string name="mute">Mute</string>
+    <string name="unmute">Unmute</string>
+    <string name="kick">Kick</string>
+    <string name="kick_confirm_title">Kick member</string>
+    <string name="kick_confirm_message">Remove this member from the room?</string>
+    <string name="yes">Yes</string>
+    <string name="cancel">Cancel</string>
+    <string name="kicked_message">You were kicked from the room</string>
+    <string name="room_closed">The host closed the room</string>
     <string name="member_count">%d member(s)</string>
     <string name="search_cancelled">Search cancelled</string>
     <string name="error_prefix">Error: </string>
