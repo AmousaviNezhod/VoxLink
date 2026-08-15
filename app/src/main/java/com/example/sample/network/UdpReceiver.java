@@ -3,27 +3,30 @@ package com.example.sample.network;
 import android.content.Context;
 import android.net.wifi.WifiManager;
 import android.os.Build;
+import android.os.Process;
 import android.util.Log;
 
 import com.example.sample.util.Constants;
+
 import java.net.DatagramPacket;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.MulticastSocket;
 import java.net.NetworkInterface;
-import java.net.SocketException;
-import java.util.Collections;
-import java.util.Enumeration;
-import java.util.List;
+import java.net.SocketTimeoutException;
 
 public class UdpReceiver {
     private static final String TAG = "UdpReceiver";
+
     private MulticastSocket socket;
     private InetAddress groupAddress;
     private NetworkInterface netInterface;
     private Thread receiveThread;
-    private boolean isRunning = false;
-    private AudioReceiveListener listener;
+    private volatile boolean isRunning = false;
+
+    private AudioReceiveListener audioReceiveListener;
+    private AudioPacketListener audioPacketListener;
+    private ControlPacketListener controlPacketListener;
 
     private WifiManager.MulticastLock multicastLock;
     private Context context;
@@ -32,28 +35,54 @@ public class UdpReceiver {
         void onAudioReceived(int senderId, byte[] audioData);
     }
 
+    public interface AudioPacketListener {
+        void onAudioPacket(int senderId, int sequence, byte[] payload);
+    }
+
+    public interface ControlPacketListener {
+        void onControlPacket(int senderId, byte[] payload);
+    }
+
+    public UdpReceiver(Context context) {
+        this.context = context == null ? null : context.getApplicationContext();
+    }
+
     public UdpReceiver(AudioReceiveListener listener, Context context) {
-        this.listener = listener;
-        this.context = context.getApplicationContext();
+        this.audioReceiveListener = listener;
+        this.context = context == null ? null : context.getApplicationContext();
+    }
+
+    public void setAudioPacketListener(AudioPacketListener l) {
+        this.audioPacketListener = l;
+    }
+
+    public void setControlPacketListener(ControlPacketListener l) {
+        this.controlPacketListener = l;
     }
 
     public boolean start(int mySenderId) {
         try {
-            socket = new MulticastSocket(Constants.UDP_PORT);
-            groupAddress = InetAddress.getByName(Constants.MULTICAST_GROUP);
+            netInterface = NetworkHelper.getLocalNetworkInterface(context);
+
+            socket = new MulticastSocket(null);
+            socket.setReuseAddress(true);
+            socket.bind(new InetSocketAddress(Constants.UDP_PORT));
+            if (netInterface != null) {
+                socket.setNetworkInterface(netInterface);
+            }
 
             WifiManager wifiManager = (WifiManager) context.getSystemService(Context.WIFI_SERVICE);
             if (wifiManager != null) {
                 multicastLock = wifiManager.createMulticastLock("VoxLinkMulticastLock");
-                multicastLock.setReferenceCounted(true);
+                multicastLock.setReferenceCounted(false);
                 multicastLock.acquire();
                 Log.d(TAG, "Multicast Lock acquired successfully.");
             }
 
-            this.netInterface = getMulticastNetworkInterface();
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && this.netInterface != null) {
-                socket.joinGroup(new InetSocketAddress(groupAddress, Constants.UDP_PORT), this.netInterface);
-                Log.d(TAG, "Joined multicast group on interface: " + this.netInterface.getDisplayName());
+            groupAddress = InetAddress.getByName(Constants.MULTICAST_GROUP);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && netInterface != null) {
+                socket.joinGroup(new InetSocketAddress(groupAddress, Constants.UDP_PORT), netInterface);
+                Log.d(TAG, "Joined multicast group on interface: " + netInterface.getDisplayName());
             } else {
                 socket.joinGroup(groupAddress);
             }
@@ -71,47 +100,19 @@ public class UdpReceiver {
         }
     }
 
-    private NetworkInterface getMulticastNetworkInterface() {
-        try {
-            Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
-            NetworkInterface fallback = null;
-            while (interfaces.hasMoreElements()) {
-                NetworkInterface intf = interfaces.nextElement();
-                try {
-                    if (intf.isUp() && !intf.isLoopback() && intf.supportsMulticast()) {
-                        List<InetAddress> addrs = Collections.list(intf.getInetAddresses());
-                        for (InetAddress addr : addrs) {
-                            if (addr instanceof java.net.Inet4Address && !addr.isLoopbackAddress()) {
-                                String name = intf.getName() == null ? "" : intf.getName().toLowerCase();
-                                if (name.contains("wlan") || name.contains("eth") || name.contains("ap")) {
-                                    return intf;
-                                }
-                                if (fallback == null) {
-                                    fallback = intf;
-                                }
-                            }
-                        }
-                    }
-                } catch (SocketException ignored) {}
-            }
-            return fallback;
-        } catch (Exception e) {
-            Log.e(TAG, "Error selecting network interface: " + e.getMessage());
-            return null;
-        }
-    }
-
     private void receiveLoop(int mySenderId) {
+        Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO);
+
         byte[] buffer = new byte[Constants.MAX_PACKET_SIZE + Constants.PACKET_HEADER_SIZE];
         while (isRunning) {
             try {
                 DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
                 socket.receive(packet);
 
-                byte[] data = packet.getData();
                 int length = packet.getLength();
-
                 if (length < Constants.PACKET_HEADER_SIZE) continue;
+
+                byte[] data = packet.getData();
 
                 int senderId = ((data[0] & 0xFF) << 24) |
                         ((data[1] & 0xFF) << 16) |
@@ -120,16 +121,30 @@ public class UdpReceiver {
 
                 if (senderId == mySenderId) continue;
 
-                int audioLength = ((data[6] & 0xFF) << 8) | (data[7] & 0xFF);
-                if (audioLength <= 0 || audioLength > length - Constants.PACKET_HEADER_SIZE) continue;
+                int sequence = ((data[4] & 0xFF) << 8) | (data[5] & 0xFF);
+                int payloadLength = ((data[6] & 0xFF) << 8) | (data[7] & 0xFF);
 
-                byte[] audioData = new byte[audioLength];
-                System.arraycopy(data, Constants.PACKET_HEADER_SIZE, audioData, 0, audioLength);
+                if (payloadLength < 0 || payloadLength > length - Constants.PACKET_HEADER_SIZE) continue;
 
-                if (listener != null) {
-                    listener.onAudioReceived(senderId, audioData);
+                byte[] payload = new byte[payloadLength];
+                System.arraycopy(data, Constants.PACKET_HEADER_SIZE, payload, 0, payloadLength);
+
+                if (isControlPayload(payloadLength)) {
+                    if (controlPacketListener != null) {
+                        controlPacketListener.onControlPacket(senderId, payload);
+                    }
+                } else {
+                    if (audioPacketListener != null) {
+                        audioPacketListener.onAudioPacket(senderId, sequence, payload);
+                    }
                 }
 
+                if (audioReceiveListener != null) {
+                    audioReceiveListener.onAudioReceived(senderId, payload);
+                }
+
+            } catch (SocketTimeoutException e) {
+                // expected on timeout
             } catch (Exception e) {
                 if (isRunning) {
                     Log.e(TAG, "Error in receive loop: " + e.getMessage());
@@ -138,23 +153,34 @@ public class UdpReceiver {
         }
     }
 
+    private boolean isControlPayload(int payloadLength) {
+        return payloadLength == 1 || payloadLength == Constants.MEMBER_CONTROL_PACKET_SIZE;
+    }
+
     public void stop() {
         isRunning = false;
+        if (receiveThread != null) {
+            receiveThread.interrupt();
+        }
         try {
             if (socket != null) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && netInterface != null) {
-                    socket.leaveGroup(new InetSocketAddress(groupAddress, Constants.UDP_PORT), netInterface);
-                } else {
-                    socket.leaveGroup(groupAddress);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && netInterface != null && groupAddress != null) {
+                    try {
+                        socket.leaveGroup(new InetSocketAddress(groupAddress, Constants.UDP_PORT), netInterface);
+                    } catch (Exception ignored) {}
+                } else if (groupAddress != null) {
+                    try {
+                        socket.leaveGroup(groupAddress);
+                    } catch (Exception ignored) {}
                 }
                 socket.close();
             }
-            if (multicastLock != null && multicastLock.isHeld()) {
-                multicastLock.release();
-                Log.d(TAG, "Multicast Lock released.");
-            }
         } catch (Exception e) {
             Log.e(TAG, "Error stopping UdpReceiver: " + e.getMessage());
+        }
+        if (multicastLock != null && multicastLock.isHeld()) {
+            multicastLock.release();
+            Log.d(TAG, "Multicast Lock released.");
         }
     }
 }
