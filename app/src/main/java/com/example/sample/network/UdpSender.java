@@ -1,33 +1,63 @@
 package com.example.sample.network;
 
+import android.content.Context;
 import android.util.Log;
 
 import com.example.sample.util.Constants;
+
 import java.net.DatagramPacket;
-import java.net.DatagramSocket;
 import java.net.InetAddress;
-import java.util.UUID;
+import java.net.InetSocketAddress;
+import java.net.MulticastSocket;
+import java.net.NetworkInterface;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class UdpSender {
     private static final String TAG = "UdpSender";
-    private DatagramSocket socket;
+
+    private MulticastSocket socket;
     private InetAddress groupAddress;
-    private boolean isReady = false;
-    private int senderId;
-    private short sequenceNum;
+    private volatile boolean isReady = false;
+    private final int senderId;
+    private final Context context;
+    private final AtomicInteger audioSequence = new AtomicInteger(0);
 
     public UdpSender() {
-        senderId = Math.abs(UUID.randomUUID().hashCode());
-        if (senderId == 0) senderId = 1;
-        sequenceNum = 0;
+        this(null);
+    }
+
+    public UdpSender(Context context) {
+        this.context = context == null ? null : context.getApplicationContext();
+        this.senderId = generateSenderId();
+    }
+
+    private static int generateSenderId() {
+        int id = ThreadLocalRandom.current().nextInt(1, Integer.MAX_VALUE);
+        if (id <= 0) {
+            id = 1;
+        }
+        return id;
     }
 
     public boolean prepare() {
         try {
-            socket = new DatagramSocket();
-            socket.setBroadcast(true);
+            NetworkInterface netInterface = NetworkHelper.getLocalNetworkInterface(context);
+            if (netInterface == null) {
+                Log.w(TAG, "No usable network interface found; multicast may fail");
+            }
+
+            socket = new MulticastSocket(null);
+            socket.setReuseAddress(true);
+            socket.bind(new InetSocketAddress(0));
+            if (netInterface != null) {
+                socket.setNetworkInterface(netInterface);
+            }
+            socket.setTimeToLive(1);
+
             groupAddress = InetAddress.getByName(Constants.MULTICAST_GROUP);
             isReady = true;
+
             Log.d(TAG, "UdpSender ready. Sender ID: " + senderId);
             return true;
         } catch (Exception e) {
@@ -36,28 +66,50 @@ public class UdpSender {
         }
     }
 
+    public void sendAudio(byte[] pcm) {
+        if (!isReady || socket == null || pcm == null) return;
+        int seq = audioSequence.getAndIncrement() & 0xFFFF;
+        sendWithSequence(pcm, seq);
+    }
+
+    public void sendControl(byte[] data) {
+        if (!isReady || socket == null || data == null) return;
+        sendWithSequence(data, 0);
+    }
+
+    /**
+     * Backward-compatible alias used by {@code VoiceRoomActivity}.
+     * Small payloads are treated as control; larger payloads as audio.
+     */
     public void send(byte[] data) {
-        if (!isReady || socket == null) return;
-        try {
-            byte[] packet = buildPacket(data);
-            DatagramPacket datagramPacket = new DatagramPacket(packet, packet.length, groupAddress, Constants.UDP_PORT);
-            socket.send(datagramPacket);
-            sequenceNum++;
-        } catch (Exception e) {
-            Log.e(TAG, "Error sending: " + e.getMessage());
+        if (data == null) return;
+        if (data.length <= Constants.MEMBER_CONTROL_PACKET_SIZE) {
+            sendControl(data);
+        } else {
+            sendAudio(data);
         }
     }
 
-    private byte[] buildPacket(byte[] data) {
+    private void sendWithSequence(byte[] data, int seq) {
+        try {
+            byte[] packet = buildPacket(data, seq & 0xFFFF);
+            DatagramPacket datagramPacket = new DatagramPacket(packet, packet.length, groupAddress, Constants.UDP_PORT);
+            socket.send(datagramPacket);
+        } catch (Exception e) {
+            Log.e(TAG, "Error sending packet: " + e.getMessage());
+        }
+    }
+
+    private byte[] buildPacket(byte[] data, int sequence) {
         byte[] packet = new byte[Constants.PACKET_HEADER_SIZE + data.length];
-        packet[0] = (byte)(senderId >> 24);
-        packet[1] = (byte)(senderId >> 16);
-        packet[2] = (byte)(senderId >> 8);
-        packet[3] = (byte)(senderId);
-        packet[4] = (byte)(sequenceNum >> 8);
-        packet[5] = (byte)(sequenceNum);
-        packet[6] = (byte)(data.length >> 8);
-        packet[7] = (byte)(data.length);
+        packet[0] = (byte) (senderId >> 24);
+        packet[1] = (byte) (senderId >> 16);
+        packet[2] = (byte) (senderId >> 8);
+        packet[3] = (byte) senderId;
+        packet[4] = (byte) ((sequence >> 8) & 0xFF);
+        packet[5] = (byte) (sequence & 0xFF);
+        packet[6] = (byte) ((data.length >> 8) & 0xFF);
+        packet[7] = (byte) (data.length & 0xFF);
         System.arraycopy(data, 0, packet, Constants.PACKET_HEADER_SIZE, data.length);
         return packet;
     }
