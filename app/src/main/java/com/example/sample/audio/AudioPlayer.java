@@ -1,9 +1,11 @@
-package com.example.sample;
+package com.example.sample.audio;
 
 import android.media.AudioAttributes;
 import android.media.AudioFormat;
 import android.media.AudioTrack;
 import android.util.Log;
+
+import com.example.sample.util.Constants;
 
 public class AudioPlayer {
     private static final String TAG = "AudioPlayer";

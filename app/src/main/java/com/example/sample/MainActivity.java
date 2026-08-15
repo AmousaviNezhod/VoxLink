@@ -24,6 +24,9 @@ import androidx.core.content.ContextCompat;
 import androidx.core.view.GravityCompat;
 import androidx.drawerlayout.widget.DrawerLayout;
 
+import com.example.sample.network.DiscoveryManager;
+import com.example.sample.network.NetworkHelper;
+
 import java.util.ArrayList;
 import java.util.List;
 

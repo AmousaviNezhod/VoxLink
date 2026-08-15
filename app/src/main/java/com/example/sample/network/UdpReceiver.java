@@ -1,9 +1,11 @@
-package com.example.sample;
+package com.example.sample.network;
 
 import android.content.Context;
 import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.util.Log;
+
+import com.example.sample.util.Constants;
 import java.net.DatagramPacket;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;

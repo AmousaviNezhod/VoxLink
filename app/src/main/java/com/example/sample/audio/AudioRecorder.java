@@ -1,9 +1,11 @@
-package com.example.sample;
+package com.example.sample.audio;
 
 import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
 import android.util.Log;
+
+import com.example.sample.util.Constants;
 
 public class AudioRecorder {
     private static final String TAG = "AudioRecorder";

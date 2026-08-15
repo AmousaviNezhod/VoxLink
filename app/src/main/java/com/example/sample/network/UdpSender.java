@@ -1,6 +1,8 @@
-package com.example.sample;
+package com.example.sample.network;
 
 import android.util.Log;
+
+import com.example.sample.util.Constants;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;

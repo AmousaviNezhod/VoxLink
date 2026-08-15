@@ -1,4 +1,4 @@
-package com.example.sample;
+package com.example.sample.network;
 
 import android.content.Context;
 import android.net.ConnectivityManager;
