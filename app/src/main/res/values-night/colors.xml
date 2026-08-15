@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dark mode palette (fully black) - overrides in night mode -->
+    <color name="bg_primary">#000000</color>
+    <color name="bg_card">#0A0A0A</color>
+    <color name="glass_bg">#080808</color>
+    <color name="glass_border">#1A1A1A</color>
+    <color name="glass_stroke">#252525</color>
+    <color name="text_primary">#FFFFFF</color>
+    <color name="text_secondary">#9494AA</color>
+    <color name="text_hint">#4A4A5A</color>
+    <color name="danger_text">#FF6B6B</color>
+</resources>

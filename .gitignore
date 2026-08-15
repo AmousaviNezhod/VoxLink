@@ -1,0 +1,14 @@
+# Gradle
+.gradle/
+build/
+
+# Android
+app/build/
+*.iml
+.idea/
+local.properties
+.DS_Store
+
+# APK outputs (keep source only)
+*.apk
+*.aab

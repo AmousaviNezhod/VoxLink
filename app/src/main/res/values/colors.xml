@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+
+    <color name="accent_purple">#6366F1</color>
+    <color name="accent_violet">#8B5CF6</color>
+    <color name="accent_green">#22C55E</color>
+    <color name="accent_red">#EF4444</color>
+    <color name="accent_orange">#BA7517</color>
+
+    <color name="bg_primary">#F5F5F5</color>
+    <color name="bg_card">#FFFFFF</color>
+    <color name="glass_bg">#F0F0F5</color>
+    <color name="glass_border">#E0E0E5</color>
+    <color name="glass_stroke">#D0D0D8</color>
+    <color name="text_primary">#1A1A2E</color>
+    <color name="text_secondary">#4A4A6A</color>
+    <color name="text_hint">#8A8AA0</color>
+
+    <color name="danger_text">#FF6B6B</color>
+</resources>
