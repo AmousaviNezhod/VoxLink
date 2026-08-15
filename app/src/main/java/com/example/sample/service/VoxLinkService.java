@@ -395,10 +395,11 @@ public class VoxLinkService extends Service {
         if (!isHost) return;
         Member m = room != null ? room.members.get(memberId) : null;
         if (m != null) m.isMuted.set(muted);
-        if (muted && udpSender != null && udpSender.isReady()) {
-            byte[] payload = new byte[Constants.MEMBER_CONTROL_PACKET_SIZE];
+        if (udpSender != null && udpSender.isReady()) {
+            byte[] payload = new byte[6];
             payload[0] = Constants.PACKET_MUTE_MEMBER;
             writeInt(payload, 1, memberId);
+            payload[5] = (byte) (muted ? 1 : 0);
             udpSender.sendControl(payload);
         }
     }
@@ -468,9 +469,10 @@ public class VoxLinkService extends Service {
                 }
                 break;
             case Constants.PACKET_MUTE_MEMBER:
-                if (payload.length >= 5) {
+                if (payload.length >= 6) {
                     int id = readInt(payload, 1);
-                    handleMuteMember(senderId, id);
+                    boolean muted = payload[5] != 0;
+                    handleMuteMember(senderId, id, muted);
                 }
                 break;
             case Constants.PACKET_KICK_MEMBER:
@@ -548,14 +550,14 @@ public class VoxLinkService extends Service {
         }
     }
 
-    private void handleMuteMember(int senderId, int targetId) {
+    private void handleMuteMember(int senderId, int targetId, boolean muted) {
         if (targetId == mySenderId) {
             if (isHost && senderId != mySenderId) return;
             if (!isHost && room.hostId > 0 && senderId != room.hostId) return;
-            setLocalMuted(true);
+            setLocalMuted(muted);
         } else if (isHost) {
             Member m = room.members.get(targetId);
-            if (m != null) m.isMuted.set(true);
+            if (m != null) m.isMuted.set(muted);
         }
     }
 
@@ -666,7 +668,7 @@ public class VoxLinkService extends Service {
 
     private void startForegroundWithNotification() {
         Notification notification = buildNotification();
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
         } else {
             startForeground(NOTIFICATION_ID, notification);
@@ -704,7 +706,8 @@ public class VoxLinkService extends Service {
         PowerManager powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
         if (powerManager != null) {
             wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "VoxLink:WakeLock");
-            wakeLock.acquire();
+            wakeLock.setReferenceCounted(false);
+            wakeLock.acquire(10 * 60 * 1000L);
         }
     }
 

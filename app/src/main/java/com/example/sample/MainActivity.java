@@ -211,7 +211,6 @@ public class MainActivity extends AppCompatActivity implements DiscoveryManager.
         }
         setStatus("در حال راه‌اندازی گروه...", 0xFFBA7517);
         if (discoveryManager != null) discoveryManager.stopAll();
-        discoveryManager.registerGroup();
         goToVoiceRoom("host", "127.0.0.1");
     }
 

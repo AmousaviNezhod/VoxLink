@@ -129,7 +129,7 @@ public class UdpReceiver {
                 byte[] payload = new byte[payloadLength];
                 System.arraycopy(data, Constants.PACKET_HEADER_SIZE, payload, 0, payloadLength);
 
-                if (isControlPayload(payloadLength)) {
+                if (isControlPayload(payload, payloadLength)) {
                     if (controlPacketListener != null) {
                         controlPacketListener.onControlPacket(senderId, payload);
                     }
@@ -153,8 +153,10 @@ public class UdpReceiver {
         }
     }
 
-    private boolean isControlPayload(int payloadLength) {
-        return payloadLength == 1 || payloadLength == Constants.MEMBER_CONTROL_PACKET_SIZE;
+    private boolean isControlPayload(byte[] payload, int length) {
+        if (payload == null || length < 1) return false;
+        byte type = payload[0];
+        return type >= Constants.PACKET_PING_CLIENT && type <= Constants.PACKET_ROOM_LOCKED;
     }
 
     public void stop() {

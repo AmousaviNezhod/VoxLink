@@ -1,5 +1,6 @@
 package com.example.sample.audio;
 
+import android.annotation.SuppressLint;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
@@ -27,6 +28,7 @@ public class AudioRecorder {
         this.listener = listener;
     }
 
+    @SuppressLint("MissingPermission")
     public boolean prepare() {
         try {
             int minBufferSize = AudioRecord.getMinBufferSize(
