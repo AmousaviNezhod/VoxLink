@@ -42,6 +42,18 @@
         </LinearLayout>
 
         <TextView
+            android:id="@+id/btnAudioDevices"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🎧"
+            android:textSize="20sp"
+            android:padding="10dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:layout_marginEnd="8dp"/>
+
+        <TextView
             android:id="@+id/tvLiveBadge"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"

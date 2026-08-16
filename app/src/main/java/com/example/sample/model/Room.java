@@ -1,5 +1,7 @@
 package com.example.sample.model;
 
+import java.util.Collections;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class Room {
@@ -9,6 +11,7 @@ public class Room {
     public volatile int mySenderId = -1;
     public final ConcurrentHashMap<Integer, Member> members = new ConcurrentHashMap<>();
     public volatile boolean isLocked = false;
+    private final Set<Integer> bannedIds = ConcurrentHashMap.newKeySet();
 
     public Room(String roomId, boolean isHost) {
         this.roomId = roomId == null || roomId.isEmpty() ? "default" : roomId;
@@ -27,5 +30,21 @@ public class Room {
         }
         m.lastSeenMs = System.currentTimeMillis();
         return m;
+    }
+
+    public boolean isBanned(int id) {
+        return bannedIds.contains(id);
+    }
+
+    public void ban(int id) {
+        bannedIds.add(id);
+    }
+
+    public void unban(int id) {
+        bannedIds.remove(id);
+    }
+
+    public Set<Integer> getBannedIds() {
+        return Collections.unmodifiableSet(bannedIds);
     }
 }

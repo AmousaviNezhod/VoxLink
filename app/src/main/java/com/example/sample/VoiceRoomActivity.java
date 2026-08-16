@@ -29,6 +29,7 @@ import androidx.appcompat.widget.PopupMenu;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
+import com.example.sample.model.AudioDevice;
 import com.example.sample.model.Member;
 import com.example.sample.service.VoxLinkService;
 import com.example.sample.util.Constants;
@@ -42,7 +43,7 @@ public class VoiceRoomActivity extends AppCompatActivity {
 
     private static final int PERMISSION_REQUEST_CODE = 2001;
 
-    private TextView btnPTT, tvPttHint, tvRoomSubtitle, btnMicToggle, tvMemberCount;
+    private TextView btnPTT, tvPttHint, tvRoomSubtitle, btnMicToggle, tvMemberCount, btnAudioDevices;
     private LinearLayout membersContainer;
     private View pttOuter, pttRipple2, pttRipple3;
 
@@ -53,6 +54,7 @@ public class VoiceRoomActivity extends AppCompatActivity {
 
     private boolean isHost = false;
     private String hostAddress;
+    private String groupName;
     private String username;
     private volatile int mySenderId = -1;
 
@@ -68,7 +70,7 @@ public class VoiceRoomActivity extends AppCompatActivity {
             serviceBinder = (VoxLinkService.LocalBinder) binder;
             serviceBound = true;
             serviceBinder.setListener(voxLinkListener);
-            serviceBinder.startRoom(username, isHost, hostAddress);
+            serviceBinder.startRoom(username, isHost, hostAddress, groupName);
 
             mySenderId = serviceBinder.getMySenderId();
             isHost = serviceBinder.isHost();
@@ -136,6 +138,14 @@ public class VoiceRoomActivity extends AppCompatActivity {
         }
 
         @Override
+        public void onBanned() {
+            runOnUiThread(() -> {
+                VoxToast.error(VoiceRoomActivity.this, getString(R.string.banned_message), 4000);
+                finishRoom();
+            });
+        }
+
+        @Override
         public void onError(String message) {
             runOnUiThread(() -> {
                 VoxToast.error(VoiceRoomActivity.this, message, 4500);
@@ -157,12 +167,15 @@ public class VoiceRoomActivity extends AppCompatActivity {
 
         String role = getIntent().getStringExtra("role");
         hostAddress = getIntent().getStringExtra("hostAddress");
+        groupName = getIntent().getStringExtra("groupName");
+        if (groupName == null || groupName.isEmpty()) groupName = "default";
         isHost = "host".equals(role);
 
         playEnterAnimation();
         setupMicToggle();
         setupPTTButton();
         setupLeaveButton();
+        setupAudioDeviceButton();
 
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
@@ -186,6 +199,7 @@ public class VoiceRoomActivity extends AppCompatActivity {
         pttOuter = findViewById(R.id.pttOuter);
         pttRipple2 = findViewById(R.id.pttRipple2);
         pttRipple3 = findViewById(R.id.pttRipple3);
+        btnAudioDevices = findViewById(R.id.btnAudioDevices);
     }
 
     private boolean checkAndRequestPermissions() {
@@ -339,6 +353,72 @@ public class VoiceRoomActivity extends AppCompatActivity {
         }
     }
 
+    private void setupAudioDeviceButton() {
+        if (btnAudioDevices == null) return;
+        btnAudioDevices.setOnClickListener(v -> showAudioDeviceMenu());
+    }
+
+    private void showAudioDeviceMenu() {
+        if (serviceBinder == null) return;
+
+        PopupMenu popup = new PopupMenu(this, btnAudioDevices);
+        popup.getMenu().add(0, 1, 0, getString(R.string.change_input));
+        popup.getMenu().add(0, 2, 0, getString(R.string.change_output));
+
+        popup.setOnMenuItemClickListener(item -> {
+            int id = item.getItemId();
+            if (id == 1) {
+                showDeviceSelectionDialog(true);
+                return true;
+            } else if (id == 2) {
+                showDeviceSelectionDialog(false);
+                return true;
+            }
+            return false;
+        });
+        popup.show();
+    }
+
+    private void showDeviceSelectionDialog(boolean input) {
+        if (serviceBinder == null) return;
+        List<AudioDevice> devices = input ? serviceBinder.getAudioInputDevices() : serviceBinder.getAudioOutputDevices();
+        if (devices == null || devices.isEmpty()) {
+            VoxToast.error(this, getString(R.string.no_devices), 3000);
+            return;
+        }
+
+        String[] names = new String[devices.size()];
+        for (int i = 0; i < devices.size(); i++) {
+            names[i] = devices.get(i).name;
+        }
+
+        AudioDevice current = input ? serviceBinder.getSelectedInputDevice() : serviceBinder.getSelectedOutputDevice();
+        int checked = -1;
+        if (current != null) {
+            for (int i = 0; i < devices.size(); i++) {
+                if (devices.get(i).id == current.id) {
+                    checked = i;
+                    break;
+                }
+            }
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle(input ? getString(R.string.select_input) : getString(R.string.select_output))
+                .setSingleChoiceItems(names, checked, (dialog, which) -> {
+                    AudioDevice selected = devices.get(which);
+                    boolean ok = input ? serviceBinder.setAudioInputDevice(selected.id) : serviceBinder.setAudioOutputDevice(selected.id);
+                    if (ok) {
+                        VoxToast.success(this, "انتخاب شد: " + selected.name, 2000);
+                    } else {
+                        VoxToast.error(this, getString(R.string.device_switch_failed), 3000);
+                    }
+                    dialog.dismiss();
+                })
+                .setNegativeButton(getString(R.string.cancel), null)
+                .show();
+    }
+
     private void finishRoom() {
         if (serviceBinder != null) {
             serviceBinder.leaveRoom();
@@ -448,6 +528,7 @@ public class VoiceRoomActivity extends AppCompatActivity {
         String muteLabel = member.isMuted.get() ? getString(R.string.unmute) : getString(R.string.mute);
         popup.getMenu().add(0, 1, 0, muteLabel);
         popup.getMenu().add(0, 2, 0, getString(R.string.kick));
+        popup.getMenu().add(0, 3, 0, getString(R.string.ban));
 
         popup.setOnMenuItemClickListener(item -> {
             if (serviceBinder == null) return false;
@@ -460,6 +541,9 @@ public class VoiceRoomActivity extends AppCompatActivity {
                 return true;
             } else if (id == 2) {
                 showKickConfirmation(member.id);
+                return true;
+            } else if (id == 3) {
+                showBanConfirmation(member.id);
                 return true;
             }
             return false;
@@ -474,6 +558,21 @@ public class VoiceRoomActivity extends AppCompatActivity {
                 .setPositiveButton(getString(R.string.yes), (dialog, which) -> {
                     if (serviceBinder != null) {
                         serviceBinder.kickMember(memberId);
+                    }
+                    memberMap.remove(memberId);
+                    removeMemberFromUI(memberId);
+                })
+                .setNegativeButton(getString(R.string.cancel), null)
+                .show();
+    }
+
+    private void showBanConfirmation(int memberId) {
+        new AlertDialog.Builder(this)
+                .setTitle(getString(R.string.ban_confirm_title))
+                .setMessage(getString(R.string.ban_confirm_message))
+                .setPositiveButton(getString(R.string.yes), (dialog, which) -> {
+                    if (serviceBinder != null) {
+                        serviceBinder.banMember(memberId);
                     }
                     memberMap.remove(memberId);
                     removeMemberFromUI(memberId);

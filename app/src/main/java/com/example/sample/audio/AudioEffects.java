@@ -67,8 +67,11 @@ public class AudioEffects {
         try {
             if (active) {
                 audioManager.setMode(AudioManager.MODE_IN_COMMUNICATION);
-                audioManager.setSpeakerphoneOn(true);
             } else {
+                if (audioManager.isBluetoothScoOn()) {
+                    audioManager.stopBluetoothSco();
+                }
+                audioManager.setBluetoothScoOn(false);
                 audioManager.setSpeakerphoneOn(false);
                 audioManager.setMode(AudioManager.MODE_NORMAL);
             }

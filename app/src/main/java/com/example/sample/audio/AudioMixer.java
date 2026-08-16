@@ -12,14 +12,17 @@ import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Per-sender jitter buffer + mixer + low-latency playback thread.
+ * Per-sender adaptive jitter buffer + mixer + low-latency playback thread.
  */
 public class AudioMixer {
 
     private static final String TAG = "AudioMixer";
-    private static final int JITTER_PREFETCH = 3;
-    private static final int JITTER_MAX_FUTURE = 20;
-    private static final int JITTER_TIMEOUT_MS = 2000;
+    private static final int JITTER_PREFETCH = 4;
+    private static final int JITTER_MAX_FUTURE = 50;
+    private static final int JITTER_MAX_LATE = 8;
+    private static final int JITTER_TIMEOUT_MS = 3000;
+    private static final int MAX_MISSED_BEFORE_SKIP = 2;
+    private static final int MAX_BUFFER_SIZE = 80;
 
     private final AudioPlayer audioPlayer;
     private final int frameSize;
@@ -153,20 +156,26 @@ public class AudioMixer {
         private final TreeMap<Integer, short[]> buffer = new TreeMap<>();
         private Integer nextPlaySeq;
         private long lastPacketMs = System.currentTimeMillis();
+        private int missedCount = 0;
 
         synchronized void enqueue(int sequence, short[] frame) {
             lastPacketMs = System.currentTimeMillis();
 
             if (nextPlaySeq != null) {
-                if (sequence < nextPlaySeq || sequence > nextPlaySeq + JITTER_MAX_FUTURE) {
-                    return;
-                }
+                if (sequence < nextPlaySeq - JITTER_MAX_LATE) return;
+                if (sequence > nextPlaySeq + JITTER_MAX_FUTURE) return;
             }
 
             buffer.put(sequence, frame);
 
+            // Cap absolute buffer size to avoid memory growth during large bursts.
+            if (buffer.size() > MAX_BUFFER_SIZE) {
+                buffer.remove(buffer.firstKey());
+            }
+
             if (nextPlaySeq == null && buffer.size() >= JITTER_PREFETCH) {
                 nextPlaySeq = buffer.firstKey();
+                missedCount = 0;
             }
         }
 
@@ -174,16 +183,37 @@ public class AudioMixer {
             if (nextPlaySeq == null) {
                 if (buffer.size() >= JITTER_PREFETCH) {
                     nextPlaySeq = buffer.firstKey();
+                    missedCount = 0;
                 } else {
                     return null;
                 }
             }
 
-            short[] frame = buffer.remove(nextPlaySeq++);
-            if (buffer.isEmpty()) {
-                nextPlaySeq = null;
+            short[] frame = buffer.remove(nextPlaySeq);
+            if (frame != null) {
+                nextPlaySeq++;
+                missedCount = 0;
+                return frame;
             }
-            return frame;
+
+            // Expected frame is missing. Wait a few cycles if a future frame isn't too far ahead.
+            Integer firstFuture = buffer.ceilingKey(nextPlaySeq);
+            if (firstFuture != null) {
+                int gap = firstFuture - nextPlaySeq;
+                if (gap <= MAX_MISSED_BEFORE_SKIP && missedCount < MAX_MISSED_BEFORE_SKIP) {
+                    missedCount++;
+                    return null; // return silence and wait
+                }
+                // Gap too large or we've waited enough: skip to the first available frame.
+                nextPlaySeq = firstFuture;
+                frame = buffer.remove(nextPlaySeq++);
+                missedCount = 0;
+                return frame;
+            }
+
+            // No future frames either; keep nextPlaySeq and wait.
+            missedCount++;
+            return null;
         }
 
         synchronized boolean isExpired() {

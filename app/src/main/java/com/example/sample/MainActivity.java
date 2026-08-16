@@ -9,6 +9,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
+import android.view.Gravity;
 import android.view.View;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -16,6 +17,7 @@ import android.widget.TextView;
 
 import androidx.activity.OnBackPressedCallback;
 import androidx.annotation.NonNull;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.app.AppCompatDelegate;
 import androidx.appcompat.widget.SwitchCompat;
@@ -33,6 +35,8 @@ import java.util.List;
 public class MainActivity extends AppCompatActivity implements DiscoveryManager.DiscoveryListener {
     private static final String TAG = "MainActivity";
     private static final int PERMISSION_REQUEST_CODE = 1001;
+    private static final String PREFS_USERNAME = "username";
+    private static final String PREFS_GROUP = "group_name";
 
     private DrawerLayout drawerLayout;
     private LinearLayout mainContent;
@@ -62,7 +66,7 @@ public class MainActivity extends AppCompatActivity implements DiscoveryManager.
             mainContent.animate().alpha(1f).setDuration(600).start();
         }
 
-        discoveryManager = new DiscoveryManager(this, this);
+        showOnboardingIfNeeded();
 
         if (btnSettings != null) {
             btnSettings.setOnClickListener(v -> {
@@ -136,7 +140,7 @@ public class MainActivity extends AppCompatActivity implements DiscoveryManager.
             });
         }
 
-        String savedUsername = prefs.getString("username", "User");
+        String savedUsername = prefs.getString(PREFS_USERNAME, "User");
         if (etUsername != null) {
             etUsername.setText(savedUsername);
             etUsername.addTextChangedListener(new TextWatcher() {
@@ -145,7 +149,7 @@ public class MainActivity extends AppCompatActivity implements DiscoveryManager.
                 @Override
                 public void afterTextChanged(Editable s) {
                     SharedPreferences.Editor editor = prefs.edit();
-                    editor.putString("username", s.toString().trim());
+                    editor.putString(PREFS_USERNAME, s.toString().trim());
                     editor.apply();
                 }
             });
@@ -204,17 +208,91 @@ public class MainActivity extends AppCompatActivity implements DiscoveryManager.
         }
     }
 
+    private void showOnboardingIfNeeded() {
+        String savedUsername = prefs.getString(PREFS_USERNAME, "");
+        String savedGroup = prefs.getString(PREFS_GROUP, "");
+        if (!savedUsername.isEmpty() && !savedGroup.isEmpty()) {
+            return;
+        }
+
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(48, 24, 48, 24);
+
+        EditText etName = new EditText(this);
+        etName.setHint("نام کاربری");
+        etName.setText(savedUsername);
+        etName.setSingleLine(true);
+        etName.setGravity(Gravity.START);
+        layout.addView(etName);
+
+        EditText etGroup = new EditText(this);
+        etGroup.setHint("نام گروه");
+        etGroup.setText(savedGroup);
+        etGroup.setSingleLine(true);
+        etGroup.setGravity(Gravity.START);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = 24;
+        etGroup.setLayoutParams(lp);
+        layout.addView(etGroup);
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("خوش آمدید")
+                .setMessage("لطفاً نام کاربری و نام گروه خود را وارد کنید. همه اعضای یک گروه باید نام گروه یکسانی داشته باشند.")
+                .setView(layout)
+                .setCancelable(false)
+                .setPositiveButton("تایید", null)
+                .create();
+
+        dialog.setOnShowListener(d -> {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+                String name = etName.getText().toString().trim();
+                String group = etGroup.getText().toString().trim();
+                if (name.isEmpty() || group.isEmpty()) {
+                    setStatus("نام کاربری و گروه الزامی است", 0xFFEF4444);
+                    return;
+                }
+                SharedPreferences.Editor editor = prefs.edit();
+                editor.putString(PREFS_USERNAME, name);
+                editor.putString(PREFS_GROUP, group);
+                editor.apply();
+                if (etUsername != null) etUsername.setText(name);
+                dialog.dismiss();
+            });
+        });
+        dialog.show();
+    }
+
+    private String getSavedUsername() {
+        return prefs.getString(PREFS_USERNAME, "User").trim();
+    }
+
+    private String getSavedGroup() {
+        return prefs.getString(PREFS_GROUP, "").trim();
+    }
+
     private void startCreateGroup() {
         if (!NetworkHelper.isLocalNetworkAvailable(this)) {
             setStatus("وای‌فای یا هات‌اسپات متصل نیست!", 0xFFEF4444);
             return;
         }
+        String group = getSavedGroup();
+        if (group.isEmpty()) {
+            setStatus("ابتدا نام گروه را در تنظیمات وارد کنید", 0xFFEF4444);
+            return;
+        }
         setStatus("در حال راه‌اندازی گروه...", 0xFFBA7517);
         if (discoveryManager != null) discoveryManager.stopAll();
-        goToVoiceRoom("host", "127.0.0.1");
+        goToVoiceRoom("host", "127.0.0.1", group);
     }
 
     private void startJoinGroup() {
+        String group = getSavedGroup();
+        if (group.isEmpty()) {
+            setStatus("ابتدا نام گروه را در تنظیمات وارد کنید", 0xFFEF4444);
+            return;
+        }
         isSearching = true;
         setStatus("در حال جستجوی گروه ووکس‌لینک...", 0xFFBA7517);
         if (btnCreateGroup != null) btnCreateGroup.setEnabled(false);
@@ -222,6 +300,7 @@ public class MainActivity extends AppCompatActivity implements DiscoveryManager.
         if (btnCancelSearch != null) btnCancelSearch.setVisibility(View.VISIBLE);
 
         if (discoveryManager != null) discoveryManager.stopAll();
+        discoveryManager = new DiscoveryManager(this, group, this);
         discoveryManager.startDiscovery();
     }
 
@@ -234,8 +313,6 @@ public class MainActivity extends AppCompatActivity implements DiscoveryManager.
         if (btnCancelSearch != null) btnCancelSearch.setVisibility(View.GONE);
     }
 
-
-
     private void setStatus(String message, int color) {
         if (tvStatus != null) {
             tvStatus.setText(message);
@@ -243,10 +320,11 @@ public class MainActivity extends AppCompatActivity implements DiscoveryManager.
         }
     }
 
-    private void goToVoiceRoom(String role, String hostIp) {
+    private void goToVoiceRoom(String role, String hostIp, String groupName) {
         Intent intent = new Intent(this, VoiceRoomActivity.class);
         intent.putExtra("role", role);
         intent.putExtra("hostAddress", hostIp);
+        intent.putExtra("groupName", groupName);
         startActivity(intent);
         overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
     }
@@ -256,7 +334,7 @@ public class MainActivity extends AppCompatActivity implements DiscoveryManager.
         runOnUiThread(() -> {
             setStatus("گروه پیدا شد! ورود...", 0xFF22C55E);
             if (discoveryManager != null) discoveryManager.stopDiscovery();
-            goToVoiceRoom("client", hostAddress);
+            goToVoiceRoom("client", hostAddress, getSavedGroup());
         });
     }
 

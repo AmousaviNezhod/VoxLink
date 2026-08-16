@@ -1,9 +1,11 @@
 package com.example.sample.audio;
 
 import android.annotation.SuppressLint;
+import android.media.AudioDeviceInfo;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
+import android.os.Build;
 import android.os.Process;
 import android.util.Log;
 
@@ -111,6 +113,15 @@ public class AudioRecorder {
 
     public boolean isRecording() {
         return isRecording;
+    }
+
+    public boolean setPreferredDevice(AudioDeviceInfo device) {
+        if (audioRecord == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return false;
+        return audioRecord.setPreferredDevice(device);
+    }
+
+    public AudioRecord getAudioRecord() {
+        return audioRecord;
     }
 
     private void recordLoop() {

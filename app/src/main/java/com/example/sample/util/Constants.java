@@ -13,9 +13,9 @@ public class Constants {
     public static final int PACKET_HEADER_SIZE = 8;
     public static final int MAX_PACKET_SIZE = 1024;
 
-    public static final int MEMBER_TIMEOUT_MS = 5000;
-    public static final int MEMBER_CHECK_INTERVAL_MS = 2000;
-    public static final int PING_INTERVAL_MS = 2000;
+    public static final int MEMBER_TIMEOUT_MS = 8000;
+    public static final int MEMBER_CHECK_INTERVAL_MS = 2500;
+    public static final int PING_INTERVAL_MS = 1500;
 
     // Control packet type bytes (shared between network/service and UI)
     public static final byte PACKET_PING_CLIENT = 0x01;
@@ -29,7 +29,11 @@ public class Constants {
     public static final byte PACKET_KICK_MEMBER = 0x09;
     public static final byte PACKET_HOST_TRANSFER = 0x0A;
     public static final byte PACKET_ROOM_LOCKED = 0x0B;
+    public static final byte PACKET_BAN_MEMBER = 0x0C;
 
     // Packet size for id-only control packets: 1 byte type + 4 bytes id
     public static final int MEMBER_CONTROL_PACKET_SIZE = 5;
+
+    // Control payloads are tiny (member info max 4 + 1 + 255 = 260). Audio is 640 bytes.
+    public static final int MAX_CONTROL_PAYLOAD_SIZE = 270;
 }

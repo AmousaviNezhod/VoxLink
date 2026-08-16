@@ -1,6 +1,7 @@
 package com.example.sample.audio;
 
 import android.media.AudioAttributes;
+import android.media.AudioDeviceInfo;
 import android.media.AudioFormat;
 import android.media.AudioManager;
 import android.media.AudioTrack;
@@ -25,7 +26,8 @@ public class AudioPlayer {
                 Log.e(TAG, "Invalid min buffer size");
                 return false;
             }
-            int bufferSize = Math.max(minBufferSize, Constants.FRAME_SIZE * 2);
+            // Keep 5 frames of buffer to reduce underrun while keeping latency low.
+            int bufferSize = Math.max(minBufferSize * 2, Constants.FRAME_SIZE * 2 * 5);
 
             AudioAttributes audioAttributes = new AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
@@ -64,13 +66,21 @@ public class AudioPlayer {
 
             audioTrack.play();
             ready = true;
-            Log.d(TAG, "AudioPlayer prepared with buffer: " + bufferSize);
             return true;
         } catch (Exception e) {
             Log.e(TAG, "Error preparing AudioPlayer: " + e.getMessage());
             releaseTrack();
             return false;
         }
+    }
+
+    public boolean setPreferredDevice(AudioDeviceInfo device) {
+        if (audioTrack == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return false;
+        return audioTrack.setPreferredDevice(device);
+    }
+
+    public AudioTrack getAudioTrack() {
+        return audioTrack;
     }
 
     public void play(byte[] audioData) {

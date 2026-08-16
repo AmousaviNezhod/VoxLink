@@ -155,8 +155,12 @@ public class UdpReceiver {
 
     private boolean isControlPayload(byte[] payload, int length) {
         if (payload == null || length < 1) return false;
+        // Audio payloads are always 640 bytes; control payloads are tiny. This prevents
+        // voice packets whose first byte coincides with a control type from being
+        // misinterpreted as control packets (which caused fake member rows).
+        if (length > Constants.MAX_CONTROL_PAYLOAD_SIZE) return false;
         byte type = payload[0];
-        return type >= Constants.PACKET_PING_CLIENT && type <= Constants.PACKET_ROOM_LOCKED;
+        return type >= Constants.PACKET_PING_CLIENT && type <= Constants.PACKET_BAN_MEMBER;
     }
 
     public void stop() {

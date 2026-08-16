@@ -7,6 +7,7 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
+import android.media.AudioDeviceInfo;
 import android.media.AudioManager;
 import android.net.wifi.WifiManager;
 import android.os.Binder;
@@ -22,10 +23,12 @@ import android.util.Log;
 import androidx.core.app.NotificationCompat;
 
 import com.example.sample.R;
+import com.example.sample.audio.AudioDeviceManager;
 import com.example.sample.audio.AudioEffects;
 import com.example.sample.audio.AudioMixer;
 import com.example.sample.audio.AudioPlayer;
 import com.example.sample.audio.AudioRecorder;
+import com.example.sample.model.AudioDevice;
 import com.example.sample.model.Member;
 import com.example.sample.model.Room;
 import com.example.sample.network.DiscoveryManager;
@@ -37,9 +40,9 @@ import com.example.sample.util.Constants;
 import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -61,6 +64,7 @@ public class VoxLinkService extends Service {
     private AudioPlayer audioPlayer;
     private AudioMixer audioMixer;
     private AudioRecorder audioRecorder;
+    private AudioDeviceManager audioDeviceManager;
     private DiscoveryManager discoveryManager;
     private WifiManager.MulticastLock multicastLock;
     private PowerManager.WakeLock wakeLock;
@@ -68,6 +72,7 @@ public class VoxLinkService extends Service {
 
     private Room room;
     private String username;
+    private String groupName;
     private boolean isHost;
     private String hostAddress;
     private int mySenderId = -1;
@@ -91,11 +96,16 @@ public class VoxLinkService extends Service {
         void onHostChanged(int hostId);
         void onRoomDestroyed();
         void onError(String message);
+        void onBanned();
     }
 
     public class LocalBinder extends Binder {
         public void startRoom(String username, boolean isHost, String hostAddress) {
-            VoxLinkService.this.startRoom(username, isHost, hostAddress);
+            VoxLinkService.this.startRoom(username, isHost, hostAddress, null);
+        }
+
+        public void startRoom(String username, boolean isHost, String hostAddress, String groupName) {
+            VoxLinkService.this.startRoom(username, isHost, hostAddress, groupName);
         }
 
         public void leaveRoom() {
@@ -116,6 +126,10 @@ public class VoxLinkService extends Service {
 
         public void kickMember(int memberId) {
             VoxLinkService.this.kickMember(memberId);
+        }
+
+        public void banMember(int memberId) {
+            VoxLinkService.this.banMember(memberId);
         }
 
         public Room getRoom() {
@@ -140,6 +154,30 @@ public class VoxLinkService extends Service {
 
         public boolean isLocalMuted() {
             return VoxLinkService.this.isLocalMuted;
+        }
+
+        public List<AudioDevice> getAudioInputDevices() {
+            return VoxLinkService.this.getAudioInputDevices();
+        }
+
+        public List<AudioDevice> getAudioOutputDevices() {
+            return VoxLinkService.this.getAudioOutputDevices();
+        }
+
+        public boolean setAudioInputDevice(int deviceId) {
+            return VoxLinkService.this.setAudioInputDevice(deviceId);
+        }
+
+        public boolean setAudioOutputDevice(int deviceId) {
+            return VoxLinkService.this.setAudioOutputDevice(deviceId);
+        }
+
+        public AudioDevice getSelectedInputDevice() {
+            return VoxLinkService.this.getSelectedInputDevice();
+        }
+
+        public AudioDevice getSelectedOutputDevice() {
+            return VoxLinkService.this.getSelectedOutputDevice();
         }
     }
 
@@ -177,12 +215,13 @@ public class VoxLinkService extends Service {
         return room;
     }
 
-    private void startRoom(String username, boolean isHost, String hostAddress) {
+    private void startRoom(String username, boolean isHost, String hostAddress, String groupName) {
         if (!roomActive.compareAndSet(false, true)) {
             Log.w(TAG, "Room already active");
             return;
         }
         this.username = (username == null || username.isEmpty()) ? "User" : username;
+        this.groupName = (groupName == null || groupName.isEmpty()) ? "default" : groupName;
         this.isHost = isHost;
         this.hostAddress = hostAddress;
 
@@ -196,7 +235,7 @@ public class VoxLinkService extends Service {
             }
             mySenderId = udpSender.getSenderId();
 
-            room = new Room(UUID.randomUUID().toString(), isHost);
+            room = new Room(this.groupName, isHost);
             room.mySenderId = mySenderId;
             room.hostId = isHost ? mySenderId : -1;
             Member self = room.getOrCreate(mySenderId, this.username);
@@ -208,23 +247,9 @@ public class VoxLinkService extends Service {
             if (!audioPlayer.prepare()) {
                 throw new RuntimeException("AudioPlayer prepare failed");
             }
+
             audioMixer = new AudioMixer(audioPlayer, Constants.FRAME_SIZE);
             audioMixer.start();
-
-            audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
-            AudioEffects.configureForCommunication(this, audioManager, true);
-
-            udpReceiver = new UdpReceiver(this);
-            udpReceiver.setAudioPacketListener((senderId, sequence, payload) -> {
-                if (audioMixer != null) {
-                    audioMixer.enqueue(senderId, sequence, payload);
-                }
-                updateSpeaking(senderId);
-            });
-            udpReceiver.setControlPacketListener((senderId, payload) -> handleControlPacket(senderId, payload));
-            if (!udpReceiver.start(mySenderId)) {
-                throw new RuntimeException("UdpReceiver start failed");
-            }
 
             audioRecorder = new AudioRecorder(chunk -> {
                 if (udpSender != null && udpSender.isReady() && !isLocalMuted) {
@@ -235,7 +260,31 @@ public class VoxLinkService extends Service {
                 throw new RuntimeException("AudioRecorder prepare failed");
             }
 
-            discoveryManager = new DiscoveryManager(this, new DiscoveryManager.DiscoveryListener() {
+            audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+            AudioEffects.configureForCommunication(this, audioManager, true);
+
+            audioDeviceManager = new AudioDeviceManager(this);
+            audioDeviceManager.attachPlayer(audioPlayer.getAudioTrack());
+            audioDeviceManager.attachRecorder(audioRecorder.getAudioRecord());
+            selectDefaultAudioDevices();
+
+            udpReceiver = new UdpReceiver(this);
+            udpReceiver.setAudioPacketListener((senderId, sequence, payload) -> {
+                if (room != null) {
+                    Member m = room.getOrCreate(senderId, "User " + (senderId % 1000));
+                    m.lastSeenMs = System.currentTimeMillis();
+                }
+                if (audioMixer != null) {
+                    audioMixer.enqueue(senderId, sequence, payload);
+                }
+                updateSpeaking(senderId);
+            });
+            udpReceiver.setControlPacketListener((senderId, payload) -> handleControlPacket(senderId, payload));
+            if (!udpReceiver.start(mySenderId)) {
+                throw new RuntimeException("UdpReceiver start failed");
+            }
+
+            discoveryManager = new DiscoveryManager(this, this.groupName, new DiscoveryManager.DiscoveryListener() {
                 @Override public void onGroupFound(String hostAddress, int port) {}
                 @Override public void onGroupLost() { notifyRoomDestroyed(); }
                 @Override public void onError(String message) { notifyError(message); }
@@ -262,6 +311,24 @@ public class VoxLinkService extends Service {
             Log.e(TAG, "startRoom failed: " + e.getMessage());
             notifyError(e.getMessage());
             leaveRoom();
+        }
+    }
+
+    private void selectDefaultAudioDevices() {
+        if (audioDeviceManager == null) return;
+        List<AudioDevice> outputs = audioDeviceManager.getOutputDevices();
+        for (AudioDevice d : outputs) {
+            if (d.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER) {
+                audioDeviceManager.setOutputDevice(d.id);
+                break;
+            }
+        }
+        List<AudioDevice> inputs = audioDeviceManager.getInputDevices();
+        for (AudioDevice d : inputs) {
+            if (d.type == AudioDeviceInfo.TYPE_BUILTIN_MIC) {
+                audioDeviceManager.setInputDevice(d.id);
+                break;
+            }
         }
     }
 
@@ -311,6 +378,7 @@ public class VoxLinkService extends Service {
 
     private void doCleanup() {
         if (!cleaningUp.compareAndSet(false, true)) return;
+        if (audioDeviceManager != null) audioDeviceManager.resetRouting();
         if (audioRecorder != null) audioRecorder.release();
         if (audioMixer != null) audioMixer.stop();
         if (audioPlayer != null) audioPlayer.stop();
@@ -417,12 +485,35 @@ public class VoxLinkService extends Service {
             return;
         }
         removeMember(memberId);
-        if (udpSender != null && udpSender.isReady()) {
-            byte[] payload = new byte[Constants.MEMBER_CONTROL_PACKET_SIZE];
-            payload[0] = Constants.PACKET_KICK_MEMBER;
-            writeInt(payload, 1, memberId);
-            udpSender.sendControl(payload);
+        sendKickPacket(memberId);
+    }
+
+    private void banMember(int memberId) {
+        if (!isHost) return;
+        if (memberId == mySenderId) {
+            leaveRoom();
+            return;
         }
+        if (room != null) room.ban(memberId);
+        removeMember(memberId);
+        sendBanPacket(memberId);
+        sendKickPacket(memberId);
+    }
+
+    private void sendKickPacket(int memberId) {
+        if (udpSender == null || !udpSender.isReady()) return;
+        byte[] payload = new byte[Constants.MEMBER_CONTROL_PACKET_SIZE];
+        payload[0] = Constants.PACKET_KICK_MEMBER;
+        writeInt(payload, 1, memberId);
+        udpSender.sendControl(payload);
+    }
+
+    private void sendBanPacket(int memberId) {
+        if (udpSender == null || !udpSender.isReady()) return;
+        byte[] payload = new byte[Constants.MEMBER_CONTROL_PACKET_SIZE];
+        payload[0] = Constants.PACKET_BAN_MEMBER;
+        writeInt(payload, 1, memberId);
+        udpSender.sendControl(payload);
     }
 
     private void handleControlPacket(int senderId, byte[] payload) {
@@ -481,6 +572,12 @@ public class VoxLinkService extends Service {
                     handleKickMember(senderId, id);
                 }
                 break;
+            case Constants.PACKET_BAN_MEMBER:
+                if (payload.length >= 5) {
+                    int id = readInt(payload, 1);
+                    handleBanMember(senderId, id);
+                }
+                break;
             default:
                 break;
         }
@@ -501,6 +598,13 @@ public class VoxLinkService extends Service {
     }
 
     private void handlePingClient(int senderId, long now) {
+        if (isHost) {
+            if (room.isBanned(senderId)) {
+                sendBanPacket(senderId);
+                sendKickPacket(senderId);
+                return;
+            }
+        }
         Member m = room.getOrCreate(senderId, "User " + (senderId % 1000));
         m.lastSeenMs = now;
         if (isHost) {
@@ -514,6 +618,7 @@ public class VoxLinkService extends Service {
 
     private void addMember(int id, boolean isHostFlag, String defaultName) {
         if (id == mySenderId) return;
+        if (room.isBanned(id)) return;
         Member m = room.getOrCreate(id, defaultName);
         m.isHost = isHostFlag;
         notifyMemberAddedIfNew(m);
@@ -521,6 +626,7 @@ public class VoxLinkService extends Service {
 
     private void updateMemberName(int id, String name) {
         if (id == mySenderId) return;
+        if (room.isBanned(id)) return;
         Member m = room.getOrCreate(id, name);
         m.username = name;
         m.lastSeenMs = System.currentTimeMillis();
@@ -567,6 +673,18 @@ public class VoxLinkService extends Service {
             if (!isHost && room.hostId > 0 && senderId != room.hostId) return;
             leaveRoom();
         } else if (isHost && senderId == mySenderId) {
+            removeMember(targetId);
+        }
+    }
+
+    private void handleBanMember(int senderId, int targetId) {
+        if (targetId == mySenderId) {
+            if (isHost && senderId != mySenderId) return;
+            if (!isHost && room.hostId > 0 && senderId != room.hostId) return;
+            notifyBanned();
+            leaveRoom();
+        } else if (isHost && senderId == mySenderId) {
+            room.ban(targetId);
             removeMember(targetId);
         }
     }
@@ -660,6 +778,12 @@ public class VoxLinkService extends Service {
         }
     }
 
+    private void notifyBanned() {
+        if (listener != null) {
+            mainHandler.post(() -> { if (listener != null) listener.onBanned(); });
+        }
+    }
+
     private void notifyError(String message) {
         if (listener != null) {
             mainHandler.post(() -> { if (listener != null) listener.onError(message); });
@@ -709,6 +833,30 @@ public class VoxLinkService extends Service {
             wakeLock.setReferenceCounted(false);
             wakeLock.acquire(10 * 60 * 1000L);
         }
+    }
+
+    private List<AudioDevice> getAudioInputDevices() {
+        return audioDeviceManager != null ? audioDeviceManager.getInputDevices() : null;
+    }
+
+    private List<AudioDevice> getAudioOutputDevices() {
+        return audioDeviceManager != null ? audioDeviceManager.getOutputDevices() : null;
+    }
+
+    private boolean setAudioInputDevice(int deviceId) {
+        return audioDeviceManager != null && audioDeviceManager.setInputDevice(deviceId);
+    }
+
+    private boolean setAudioOutputDevice(int deviceId) {
+        return audioDeviceManager != null && audioDeviceManager.setOutputDevice(deviceId);
+    }
+
+    private AudioDevice getSelectedInputDevice() {
+        return audioDeviceManager != null ? audioDeviceManager.getSelectedInputDevice() : null;
+    }
+
+    private AudioDevice getSelectedOutputDevice() {
+        return audioDeviceManager != null ? audioDeviceManager.getSelectedOutputDevice() : null;
     }
 
     private static void writeInt(byte[] buffer, int offset, int value) {

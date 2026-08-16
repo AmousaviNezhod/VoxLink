@@ -14,10 +14,11 @@ import java.nio.charset.StandardCharsets;
 
 public class DiscoveryManager {
     private static final String TAG = "DiscoveryManager";
-    private static final String PROBE = "VoxLink-Probe";
+    private static final String PROBE_PREFIX = "VoxLink-Probe:";
     private static final String HOST_PREFIX = "VoxLink-Host:";
 
     private final Context context;
+    private final String groupName;
     private DiscoveryListener listener;
     private Thread hostThread;
     private Thread clientThread;
@@ -32,8 +33,9 @@ public class DiscoveryManager {
         void onError(String message);
     }
 
-    public DiscoveryManager(Context context, DiscoveryListener listener) {
+    public DiscoveryManager(Context context, String groupName, DiscoveryListener listener) {
         this.context = context.getApplicationContext();
+        this.groupName = (groupName == null || groupName.isEmpty()) ? "default" : groupName;
         this.listener = listener;
     }
 
@@ -88,13 +90,16 @@ public class DiscoveryManager {
                     hostSocket.receive(packet);
 
                     String msg = new String(packet.getData(), 0, packet.getLength(), StandardCharsets.UTF_8);
-                    if (PROBE.equals(msg)) {
-                        String reply = HOST_PREFIX + Constants.UDP_PORT;
-                        byte[] replyBytes = reply.getBytes(StandardCharsets.UTF_8);
-                        DatagramPacket replyPacket = new DatagramPacket(
-                                replyBytes, replyBytes.length, packet.getAddress(), packet.getPort());
-                        hostSocket.send(replyPacket);
-                        Log.d(TAG, "Replied to probe from " + packet.getAddress().getHostAddress());
+                    if (msg.startsWith(PROBE_PREFIX)) {
+                        String probeGroup = msg.substring(PROBE_PREFIX.length());
+                        if (groupName.equals(probeGroup)) {
+                            String reply = HOST_PREFIX + Constants.UDP_PORT + ":" + groupName;
+                            byte[] replyBytes = reply.getBytes(StandardCharsets.UTF_8);
+                            DatagramPacket replyPacket = new DatagramPacket(
+                                    replyBytes, replyBytes.length, packet.getAddress(), packet.getPort());
+                            hostSocket.send(replyPacket);
+                            Log.d(TAG, "Replied to probe from " + packet.getAddress().getHostAddress() + " group=" + groupName);
+                        }
                     }
                 } catch (SocketTimeoutException ignored) {}
             }
@@ -113,7 +118,7 @@ public class DiscoveryManager {
                 broadcastAddress = InetAddress.getByName("255.255.255.255");
             }
 
-            String message = HOST_PREFIX + Constants.UDP_PORT;
+            String message = HOST_PREFIX + Constants.UDP_PORT + ":" + groupName;
             byte[] buffer = message.getBytes(StandardCharsets.UTF_8);
             DatagramPacket packet = new DatagramPacket(buffer, buffer.length, broadcastAddress, Constants.DISCOVERY_PORT);
             hostSocket.send(packet);
@@ -150,11 +155,23 @@ public class DiscoveryManager {
                     if (msg.startsWith(HOST_PREFIX)) {
                         String hostAddress = packet.getAddress().getHostAddress();
                         int voicePort = Constants.UDP_PORT;
+                        String foundGroup = "";
                         try {
-                            voicePort = Integer.parseInt(msg.substring(HOST_PREFIX.length()));
+                            String payload = msg.substring(HOST_PREFIX.length());
+                            int colon = payload.indexOf(':');
+                            if (colon >= 0) {
+                                voicePort = Integer.parseInt(payload.substring(0, colon));
+                                foundGroup = payload.substring(colon + 1);
+                            } else {
+                                voicePort = Integer.parseInt(payload);
+                            }
                         } catch (Exception ignored) {}
 
-                        Log.d(TAG, "Host found: " + hostAddress + ":" + voicePort);
+                        if (!groupName.equals(foundGroup)) {
+                            continue;
+                        }
+
+                        Log.d(TAG, "Host found: " + hostAddress + ":" + voicePort + " group=" + foundGroup);
                         if (listener != null) {
                             listener.onGroupFound(hostAddress, voicePort);
                         }
@@ -183,7 +200,7 @@ public class DiscoveryManager {
                 broadcastAddress = InetAddress.getByName("255.255.255.255");
             }
 
-            byte[] buffer = PROBE.getBytes(StandardCharsets.UTF_8);
+            byte[] buffer = (PROBE_PREFIX + groupName).getBytes(StandardCharsets.UTF_8);
             DatagramPacket packet = new DatagramPacket(buffer, buffer.length, broadcastAddress, Constants.DISCOVERY_PORT);
             clientSocket.send(packet);
             Log.d(TAG, "Sent discovery probe");
