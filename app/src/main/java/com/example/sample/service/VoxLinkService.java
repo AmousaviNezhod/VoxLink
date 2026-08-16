@@ -474,7 +474,6 @@ public class VoxLinkService extends Service {
 
     private void setLocalMuted(boolean muted) {
         isLocalMuted = muted;
-        if (audioMixer != null) audioMixer.setMuted(muted);
         updateRecordingState();
     }
 

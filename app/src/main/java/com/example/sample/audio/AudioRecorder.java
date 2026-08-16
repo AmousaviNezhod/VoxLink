@@ -84,6 +84,13 @@ public class AudioRecorder {
 
     public void stopRecording() {
         isRecording = false;
+        if (audioRecord != null && audioRecord.getRecordingState() == AudioRecord.RECORDSTATE_RECORDING) {
+            try {
+                audioRecord.stop();
+            } catch (Exception e) {
+                Log.w(TAG, "Error stopping AudioRecord: " + e.getMessage());
+            }
+        }
         if (recordThread != null) {
             try {
                 recordThread.join(500);
@@ -91,13 +98,6 @@ public class AudioRecorder {
                 Thread.currentThread().interrupt();
             }
             recordThread = null;
-        }
-        if (audioRecord != null && audioRecord.getRecordingState() == AudioRecord.RECORDSTATE_RECORDING) {
-            try {
-                audioRecord.stop();
-            } catch (Exception e) {
-                Log.w(TAG, "Error stopping AudioRecord: " + e.getMessage());
-            }
         }
         Log.d(TAG, "Recording stopped");
     }
