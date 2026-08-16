@@ -69,6 +69,16 @@
     <string name="toast_success">Success</string>
     <string name="toast_info">Info</string>
 
+    <string name="onboarding_title">Welcome to VoxLink</string>
+    <string name="onboarding_message">Choose a username and group name. All members must use the same group name to connect.</string>
+    <string name="username_required">Username is required</string>
+    <string name="group_required">Group name is required</string>
+    <string name="ok">OK</string>
+    <string name="group_name">Group name</string>
+    <string name="enter_group_name">Enter group name</string>
+    <string name="mic">Microphone</string>
+    <string name="ptt">Push to talk</string>
+
     <string name="error_audio_player">Audio player failed to initialize. Restart app.</string>
     <string name="error_audio_recorder">Microphone failed to initialize. Check permissions.</string>
     <string name="error_network_sender">Network sender failed. Check WiFi connection.</string>

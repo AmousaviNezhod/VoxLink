@@ -10,10 +10,15 @@ import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.view.Gravity;
+import android.view.LayoutInflater;
 import android.view.View;
+import android.view.animation.DecelerateInterpolator;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+
+import com.google.android.material.textfield.TextInputEditText;
+import com.google.android.material.textfield.TextInputLayout;
 
 import androidx.activity.OnBackPressedCallback;
 import androidx.annotation.NonNull;
@@ -63,7 +68,14 @@ public class MainActivity extends AppCompatActivity implements DiscoveryManager.
         setupSettingsDrawer();
 
         if (mainContent != null) {
-            mainContent.animate().alpha(1f).setDuration(600).start();
+            mainContent.setAlpha(0f);
+            mainContent.setTranslationY(UiHelper.dpToPx(this, 30));
+            mainContent.animate()
+                    .alpha(1f)
+                    .translationY(0f)
+                    .setDuration(UiHelper.shouldAnimate(this) ? 600 : 0)
+                    .setInterpolator(new DecelerateInterpolator())
+                    .start();
         }
 
         showOnboardingIfNeeded();
@@ -215,44 +227,52 @@ public class MainActivity extends AppCompatActivity implements DiscoveryManager.
             return;
         }
 
-        LinearLayout layout = new LinearLayout(this);
-        layout.setOrientation(LinearLayout.VERTICAL);
-        layout.setPadding(48, 24, 48, 24);
+        View view = LayoutInflater.from(this).inflate(R.layout.dialog_onboarding, null);
+        TextInputLayout tilUsername = view.findViewById(R.id.tilUsername);
+        TextInputLayout tilGroup = view.findViewById(R.id.tilGroup);
+        TextInputEditText etName = view.findViewById(R.id.etUsername);
+        TextInputEditText etGroup = view.findViewById(R.id.etGroup);
+        TextView tvError = view.findViewById(R.id.tvOnboardingError);
 
-        EditText etName = new EditText(this);
-        etName.setHint("نام کاربری");
+        tilUsername.setHint(getString(R.string.username));
+        tilGroup.setHint(getString(R.string.group_name));
         etName.setText(savedUsername);
-        etName.setSingleLine(true);
-        etName.setGravity(Gravity.START);
-        layout.addView(etName);
-
-        EditText etGroup = new EditText(this);
-        etGroup.setHint("نام گروه");
         etGroup.setText(savedGroup);
-        etGroup.setSingleLine(true);
-        etGroup.setGravity(Gravity.START);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        lp.topMargin = 24;
-        etGroup.setLayoutParams(lp);
-        layout.addView(etGroup);
 
         AlertDialog dialog = new AlertDialog.Builder(this)
-                .setTitle("خوش آمدید")
-                .setMessage("لطفاً نام کاربری و نام گروه خود را وارد کنید. همه اعضای یک گروه باید نام گروه یکسانی داشته باشند.")
-                .setView(layout)
+                .setTitle(R.string.onboarding_title)
+                .setMessage(R.string.onboarding_message)
+                .setView(view)
                 .setCancelable(false)
-                .setPositiveButton("تایید", null)
+                .setPositiveButton(R.string.ok, null)
                 .create();
+
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setWindowAnimations(R.style.VoxLinkDialogAnimation);
+        }
 
         dialog.setOnShowListener(d -> {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
                 String name = etName.getText().toString().trim();
                 String group = etGroup.getText().toString().trim();
-                if (name.isEmpty() || group.isEmpty()) {
-                    setStatus("نام کاربری و گروه الزامی است", 0xFFEF4444);
+                boolean valid = true;
+                if (name.isEmpty()) {
+                    tilUsername.setError(getString(R.string.username_required));
+                    valid = false;
+                } else {
+                    tilUsername.setError(null);
+                }
+                if (group.isEmpty()) {
+                    tilGroup.setError(getString(R.string.group_required));
+                    valid = false;
+                } else {
+                    tilGroup.setError(null);
+                }
+                if (!valid) {
+                    tvError.setVisibility(View.VISIBLE);
                     return;
                 }
+                tvError.setVisibility(View.GONE);
                 SharedPreferences.Editor editor = prefs.edit();
                 editor.putString(PREFS_USERNAME, name);
                 editor.putString(PREFS_GROUP, group);
@@ -326,7 +346,7 @@ public class MainActivity extends AppCompatActivity implements DiscoveryManager.
         intent.putExtra("hostAddress", hostIp);
         intent.putExtra("groupName", groupName);
         startActivity(intent);
-        overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
+        overridePendingTransition(R.anim.slide_up, R.anim.fade_out);
     }
 
     @Override

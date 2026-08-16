@@ -1,24 +1,30 @@
 package com.example.sample;
 
 import android.Manifest;
+import android.animation.ObjectAnimator;
+import android.animation.PropertyValuesHolder;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.content.res.ColorStateList;
+import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.util.TypedValue;
 import android.view.Gravity;
+import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.View;
-import android.view.animation.AlphaAnimation;
-import android.view.animation.Animation;
+import android.view.animation.DecelerateInterpolator;
 import android.view.animation.OvershootInterpolator;
-import android.view.animation.ScaleAnimation;
+import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -43,7 +49,9 @@ public class VoiceRoomActivity extends AppCompatActivity {
 
     private static final int PERMISSION_REQUEST_CODE = 2001;
 
-    private TextView btnPTT, tvPttHint, tvRoomSubtitle, btnMicToggle, tvMemberCount, btnAudioDevices;
+    private ImageButton btnPTT;
+    private TextView tvPttHint, tvRoomSubtitle, btnMicToggle, tvMemberCount;
+    private View btnAudioDevices;
     private LinearLayout membersContainer;
     private View pttOuter, pttRipple2, pttRipple3;
 
@@ -62,7 +70,7 @@ public class VoiceRoomActivity extends AppCompatActivity {
     private boolean isPttPulsing = false;
 
     private final Map<Integer, Member> memberMap = new ConcurrentHashMap<>();
-    private Runnable pttPulseRunnable;
+    private ObjectAnimator pulseAnimator2, pulseAnimator3;
 
     private final ServiceConnection serviceConnection = new ServiceConnection() {
         @Override
@@ -261,6 +269,7 @@ public class VoiceRoomActivity extends AppCompatActivity {
 
         btnMicToggle.setOnClickListener(v -> {
             if (serviceBinder == null) return;
+            v.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
             serviceBinder.toggleAlwaysOn();
             updateMicToggleUI();
         });
@@ -270,38 +279,38 @@ public class VoiceRoomActivity extends AppCompatActivity {
         if (serviceBinder == null) return;
         boolean alwaysOn = serviceBinder.isAlwaysOn();
         if (alwaysOn) {
-            btnMicToggle.setText(getString(R.string.always_on));
+            UiHelper.setTextWithFade(btnMicToggle, getString(R.string.always_on), 100, 150);
             btnMicToggle.setBackgroundResource(R.drawable.bg_button_secondary);
             btnMicToggle.setTextColor(getColorRes(R.color.text_secondary));
             btnPTT.setVisibility(View.GONE);
-            tvPttHint.setText(getString(R.string.mic_active));
+            UiHelper.setTextWithFade(tvPttHint, getString(R.string.mic_active), 100, 150);
         } else {
-            btnMicToggle.setText(getString(R.string.push_to_talk));
+            UiHelper.setTextWithFade(btnMicToggle, getString(R.string.push_to_talk), 100, 150);
             btnMicToggle.setBackgroundResource(R.drawable.bg_button_primary);
             btnMicToggle.setTextColor(0xFFFFFFFF);
             btnPTT.setVisibility(View.VISIBLE);
-            AlphaAnimation fadeIn = new AlphaAnimation(0f, 1f);
-            fadeIn.setDuration(200);
-            btnPTT.startAnimation(fadeIn);
-            tvPttHint.setText(getString(R.string.hold_to_speak));
+            UiHelper.fadeIn(btnPTT, 200);
+            UiHelper.setTextWithFade(tvPttHint, getString(R.string.hold_to_speak), 100, 150);
         }
     }
 
     private void setupPTTButton() {
         if (btnPTT == null) return;
+        btnPTT.setImageResource(R.drawable.ic_mic);
+        btnPTT.setImageTintList(ColorStateList.valueOf(Color.WHITE));
+
         btnPTT.setOnTouchListener((v, event) -> {
             if (serviceBinder == null) return false;
             if (!isPTTMode) return false;
 
             int action = event.getAction();
             if (action == MotionEvent.ACTION_DOWN) {
-                btnPTT.setText("🔴");
-                tvPttHint.setText(getString(R.string.speaking));
+                v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+                updatePttVisuals(true);
                 serviceBinder.setPttPressed(true);
                 startPttPulseAnimation();
             } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
-                btnPTT.setText("🎤");
-                tvPttHint.setText(getString(R.string.hold_to_speak));
+                updatePttVisuals(false);
                 serviceBinder.setPttPressed(false);
                 stopPttPulseAnimation();
             }
@@ -309,41 +318,73 @@ public class VoiceRoomActivity extends AppCompatActivity {
         });
     }
 
+    private void updatePttVisuals(boolean pressed) {
+        if (btnPTT == null) return;
+        if (pressed) {
+            btnPTT.setImageResource(R.drawable.ic_stop);
+            btnPTT.setImageTintList(ColorStateList.valueOf(Color.WHITE));
+            btnPTT.setBackgroundResource(R.drawable.ripple_ptt_active);
+            UiHelper.setTextWithFade(tvPttHint, getString(R.string.speaking), 80, 120);
+            UiHelper.pressFeedback(btnPTT, 0.92f, 150);
+        } else {
+            btnPTT.setImageResource(R.drawable.ic_mic);
+            btnPTT.setImageTintList(ColorStateList.valueOf(Color.WHITE));
+            btnPTT.setBackgroundResource(R.drawable.ripple_ptt);
+            UiHelper.setTextWithFade(tvPttHint, getString(R.string.hold_to_speak), 80, 120);
+            UiHelper.pressFeedback(btnPTT, 1f, 200);
+        }
+    }
+
     private void startPttPulseAnimation() {
         if (isPttPulsing) return;
         isPttPulsing = true;
-        pttPulseRunnable = new Runnable() {
-            @Override
-            public void run() {
-                if (!isPttPulsing) return;
-                AlphaAnimation ripple2 = new AlphaAnimation(0f, 0.6f);
-                ripple2.setDuration(400);
-                ripple2.setRepeatMode(Animation.REVERSE);
-                ripple2.setRepeatCount(1);
-                pttRipple2.startAnimation(ripple2);
 
-                mainHandler.postDelayed(() -> {
-                    if (!isPttPulsing) return;
-                    AlphaAnimation ripple3 = new AlphaAnimation(0f, 0.4f);
-                    ripple3.setDuration(500);
-                    ripple3.setRepeatMode(Animation.REVERSE);
-                    ripple3.setRepeatCount(1);
-                    pttRipple3.startAnimation(ripple3);
-                }, 200);
+        pulseAnimator2 = ObjectAnimator.ofPropertyValuesHolder(
+                pttRipple2,
+                PropertyValuesHolder.ofFloat(View.SCALE_X, 1f, 1.2f),
+                PropertyValuesHolder.ofFloat(View.SCALE_Y, 1f, 1.2f),
+                PropertyValuesHolder.ofFloat(View.ALPHA, 0.6f, 0f));
+        pulseAnimator2.setDuration(900);
+        pulseAnimator2.setRepeatCount(ObjectAnimator.INFINITE);
+        pulseAnimator2.setRepeatMode(ObjectAnimator.RESTART);
+        pulseAnimator2.setInterpolator(new DecelerateInterpolator());
+        pulseAnimator2.start();
 
-                mainHandler.postDelayed(this, 1000);
-            }
-        };
-        mainHandler.post(pttPulseRunnable);
+        mainHandler.postDelayed(() -> {
+            if (!isPttPulsing || pulseAnimator3 != null) return;
+            pulseAnimator3 = ObjectAnimator.ofPropertyValuesHolder(
+                    pttRipple3,
+                    PropertyValuesHolder.ofFloat(View.SCALE_X, 1f, 1.35f),
+                    PropertyValuesHolder.ofFloat(View.SCALE_Y, 1f, 1.35f),
+                    PropertyValuesHolder.ofFloat(View.ALPHA, 0.4f, 0f));
+            pulseAnimator3.setDuration(1100);
+            pulseAnimator3.setRepeatCount(ObjectAnimator.INFINITE);
+            pulseAnimator3.setRepeatMode(ObjectAnimator.RESTART);
+            pulseAnimator3.setInterpolator(new DecelerateInterpolator());
+            pulseAnimator3.start();
+        }, 300);
     }
 
     private void stopPttPulseAnimation() {
         isPttPulsing = false;
-        if (pttPulseRunnable != null) mainHandler.removeCallbacks(pttPulseRunnable);
-        pttRipple2.clearAnimation();
-        pttRipple2.setAlpha(0f);
-        pttRipple3.clearAnimation();
-        pttRipple3.setAlpha(0f);
+        if (pulseAnimator2 != null) {
+            pulseAnimator2.cancel();
+            pulseAnimator2 = null;
+        }
+        if (pulseAnimator3 != null) {
+            pulseAnimator3.cancel();
+            pulseAnimator3 = null;
+        }
+        if (pttRipple2 != null) {
+            pttRipple2.setScaleX(1f);
+            pttRipple2.setScaleY(1f);
+            pttRipple2.setAlpha(0f);
+        }
+        if (pttRipple3 != null) {
+            pttRipple3.setScaleX(1f);
+            pttRipple3.setScaleY(1f);
+            pttRipple3.setAlpha(0f);
+        }
     }
 
     private void setupLeaveButton() {
@@ -443,17 +484,18 @@ public class VoiceRoomActivity extends AppCompatActivity {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setMinimumHeight(dp(52));
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        params.bottomMargin = 8;
+        params.setMargins(0, 0, 0, dp(8));
         row.setLayoutParams(params);
         row.setBackgroundResource(R.drawable.bg_member_row);
-        row.setPadding(16, 12, 16, 12);
+        row.setPadding(dp(16), dp(12), dp(16), dp(12));
         row.setTag(member.id);
 
         View dot = new View(this);
-        LinearLayout.LayoutParams dotParams = new LinearLayout.LayoutParams(18, 18);
-        dotParams.rightMargin = 12;
+        LinearLayout.LayoutParams dotParams = new LinearLayout.LayoutParams(dp(10), dp(10));
+        dotParams.setMarginEnd(dp(12));
         dot.setLayoutParams(dotParams);
         dot.setBackgroundResource(R.drawable.bg_online_dot);
         dot.setTag("dot_" + member.id);
@@ -464,29 +506,45 @@ public class VoiceRoomActivity extends AppCompatActivity {
                 : member.username;
         tvName.setText(displayName);
         tvName.setTextColor(getColorRes(R.color.text_primary));
-        tvName.setTextSize(13);
-        tvName.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        tvName.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        LinearLayout.LayoutParams nameParams = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        nameParams.setMarginEnd(dp(12));
+        tvName.setLayoutParams(nameParams);
+        tvName.setTag("name_" + member.id);
 
-        TextView tvRole = new TextView(this);
-        tvRole.setTextSize(12);
-        tvRole.setTag("role_" + member.id);
-        setRoleText(tvRole, member);
+        LinearLayout badgeContainer = new LinearLayout(this);
+        badgeContainer.setOrientation(LinearLayout.HORIZONTAL);
+        badgeContainer.setGravity(Gravity.CENTER_VERTICAL);
+        badgeContainer.setTag("badges_" + member.id);
 
         row.addView(dot);
         row.addView(tvName);
-        row.addView(tvRole);
+        row.addView(badgeContainer);
+
+        updateMemberBadges(badgeContainer, member);
 
         if (isHost && member.id != mySenderId) {
             row.setOnLongClickListener(v -> {
+                v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
                 showHostMenu(row, member);
                 return true;
             });
         }
 
         membersContainer.addView(row);
-        AlphaAnimation fadeIn = new AlphaAnimation(0f, 1f);
-        fadeIn.setDuration(300);
-        row.startAnimation(fadeIn);
+        row.setAlpha(0f);
+        row.setTranslationY(-dp(16));
+        if (UiHelper.shouldAnimate(this)) {
+            row.animate()
+                    .alpha(1f)
+                    .translationY(0f)
+                    .setDuration(250)
+                    .setInterpolator(new DecelerateInterpolator())
+                    .start();
+        } else {
+            row.setAlpha(1f);
+            row.setTranslationY(0f);
+        }
         updateMemberCount();
     }
 
@@ -494,33 +552,51 @@ public class VoiceRoomActivity extends AppCompatActivity {
         View row = findMemberRow(member.id);
         if (row == null) return;
 
-        TextView tvName = (TextView) ((LinearLayout) row).getChildAt(1);
-        TextView tvRole = row.findViewWithTag("role_" + member.id);
+        TextView tvName = row.findViewWithTag("name_" + member.id);
+        LinearLayout badgeContainer = row.findViewWithTag("badges_" + member.id);
         if (tvName != null) {
             tvName.setText(member.id == mySenderId
                     ? member.username + " (" + getString(R.string.you) + ")"
                     : member.username);
         }
-        if (tvRole != null) {
-            setRoleText(tvRole, member);
+        if (badgeContainer != null) {
+            updateMemberBadges(badgeContainer, member);
         }
     }
 
-    private void setRoleText(TextView tvRole, Member member) {
-        StringBuilder sb = new StringBuilder();
+    private void updateMemberBadges(LinearLayout container, Member member) {
+        container.removeAllViews();
+        int iconSize = dp(18);
+        int gap = dp(4);
+
         if (member.isMuted.get()) {
-            sb.append("🔇 ");
+            ImageView ivMute = new ImageView(this);
+            LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(iconSize, iconSize);
+            p.setMarginEnd(gap);
+            ivMute.setLayoutParams(p);
+            ivMute.setImageResource(R.drawable.ic_mute);
+            ivMute.setImageTintList(ColorStateList.valueOf(getColorRes(R.color.danger_text)));
+            ivMute.setContentDescription(getString(R.string.mute));
+            container.addView(ivMute);
         }
-        if (member.isHost) {
-            sb.append("👑 ");
-            sb.append(getString(R.string.host));
-            tvRole.setTextColor(0xFFFBBF24);
-        } else {
-            sb.append("👤 ");
-            sb.append(getString(R.string.user));
-            tvRole.setTextColor(0xFF94A3B8);
-        }
-        tvRole.setText(sb.toString());
+
+        ImageView ivRole = new ImageView(this);
+        LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(iconSize, iconSize);
+        rp.setMarginEnd(gap);
+        ivRole.setLayoutParams(rp);
+        ivRole.setImageResource(member.isHost ? R.drawable.ic_host : R.drawable.ic_person);
+        ivRole.setImageTintList(ColorStateList.valueOf(member.isHost ? getColorRes(R.color.accent_orange) : getColorRes(R.color.text_hint)));
+        container.addView(ivRole);
+
+        TextView tvRole = new TextView(this);
+        tvRole.setText(member.isHost ? getString(R.string.host) : getString(R.string.user));
+        tvRole.setTextColor(member.isHost ? getColorRes(R.color.accent_orange) : getColorRes(R.color.text_hint));
+        tvRole.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        container.addView(tvRole);
+    }
+
+    private int dp(float value) {
+        return UiHelper.dpToPx(this, value);
     }
 
     private void showHostMenu(View anchor, Member member) {
@@ -594,17 +670,21 @@ public class VoiceRoomActivity extends AppCompatActivity {
     private void removeMemberFromUI(int memberId) {
         View row = findMemberRow(memberId);
         if (row == null) return;
-        AlphaAnimation fadeOut = new AlphaAnimation(1f, 0f);
-        fadeOut.setDuration(300);
-        fadeOut.setAnimationListener(new Animation.AnimationListener() {
-            @Override public void onAnimationStart(Animation animation) {}
-            @Override public void onAnimationEnd(Animation animation) {
-                membersContainer.removeView(row);
-                updateMemberCount();
-            }
-            @Override public void onAnimationRepeat(Animation animation) {}
-        });
-        row.startAnimation(fadeOut);
+        row.animate().cancel();
+        if (UiHelper.shouldAnimate(this)) {
+            row.animate()
+                    .alpha(0f)
+                    .translationY(dp(16))
+                    .setDuration(250)
+                    .withEndAction(() -> {
+                        membersContainer.removeView(row);
+                        updateMemberCount();
+                    })
+                    .start();
+        } else {
+            membersContainer.removeView(row);
+            updateMemberCount();
+        }
     }
 
     private void updateMemberSpeaking(int memberId, boolean speaking) {
@@ -626,17 +706,30 @@ public class VoiceRoomActivity extends AppCompatActivity {
     }
 
     private void playEnterAnimation() {
-        ScaleAnimation scaleUp = new ScaleAnimation(0.5f, 1f, 0.5f, 1f,
-                ScaleAnimation.RELATIVE_TO_SELF, 0.5f, ScaleAnimation.RELATIVE_TO_SELF, 0.5f);
-        scaleUp.setDuration(400);
-        scaleUp.setInterpolator(new OvershootInterpolator(1.2f));
-        if (btnPTT != null) btnPTT.startAnimation(scaleUp);
+        if (UiHelper.shouldAnimate(this)) {
+            if (btnPTT != null) {
+                btnPTT.setScaleX(0.6f);
+                btnPTT.setScaleY(0.6f);
+                btnPTT.setAlpha(0f);
+                btnPTT.animate()
+                        .scaleX(1f)
+                        .scaleY(1f)
+                        .alpha(1f)
+                        .setDuration(450)
+                        .setInterpolator(new OvershootInterpolator(1.1f))
+                        .start();
+            }
 
-        AlphaAnimation badgeIn = new AlphaAnimation(0f, 1f);
-        badgeIn.setDuration(500);
-        badgeIn.setStartOffset(200);
-        TextView liveBadge = findViewById(R.id.tvLiveBadge);
-        if (liveBadge != null) liveBadge.startAnimation(badgeIn);
+            TextView liveBadge = findViewById(R.id.tvLiveBadge);
+            if (liveBadge != null) {
+                liveBadge.setAlpha(0f);
+                liveBadge.animate()
+                        .alpha(1f)
+                        .setStartDelay(200)
+                        .setDuration(350)
+                        .start();
+            }
+        }
     }
 
     @Override

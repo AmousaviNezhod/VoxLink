@@ -1,12 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="@color/bg_primary">
+    android:background="@color/bg_primary"
+    android:animateLayoutChanges="true">
 
-    <!-- هدر -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -14,8 +15,8 @@
         android:gravity="center_vertical"
         android:paddingStart="20dp"
         android:paddingEnd="20dp"
-        android:paddingTop="20dp"
-        android:paddingBottom="12dp">
+        android:paddingTop="24dp"
+        android:paddingBottom="16dp">
 
         <LinearLayout
             android:layout_width="0dp"
@@ -27,7 +28,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/voice_room"
-                android:textSize="22sp"
+                android:textSize="24sp"
                 android:textStyle="bold"
                 android:textColor="@color/text_primary"/>
 
@@ -36,21 +37,22 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/connecting"
-                android:textSize="12sp"
-                android:textColor="@color/text_hint"/>
+                android:textSize="13sp"
+                android:textColor="@color/text_hint"
+                android:layout_marginTop="4dp"/>
 
         </LinearLayout>
 
-        <TextView
+        <ImageButton
             android:id="@+id/btnAudioDevices"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="🎧"
-            android:textSize="20sp"
-            android:padding="10dp"
-            android:clickable="true"
-            android:focusable="true"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:padding="12dp"
             android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_headset"
+            android:scaleType="centerInside"
+            app:tint="@color/text_secondary"
+            android:contentDescription="@string/change_input"
             android:layout_marginEnd="8dp"/>
 
         <TextView
@@ -59,16 +61,16 @@
             android:layout_height="wrap_content"
             android:text="@string/live"
             android:textSize="11sp"
+            android:textStyle="bold"
             android:textColor="@color/accent_green"
             android:background="@drawable/bg_live_badge"
-            android:paddingStart="10dp"
-            android:paddingEnd="10dp"
-            android:paddingTop="5dp"
-            android:paddingBottom="5dp"/>
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:paddingTop="6dp"
+            android:paddingBottom="6dp"/>
 
     </LinearLayout>
 
-    <!-- کارت اعضا -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -90,33 +92,35 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="@string/group_members"
-                android:textSize="11sp"
+                android:textSize="12sp"
                 android:textColor="@color/text_hint"/>
 
             <TextView
                 android:id="@+id/tvMemberCount"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:textSize="11sp"
+                android:textSize="12sp"
+                android:textStyle="bold"
                 android:textColor="@color/accent_green"/>
 
         </LinearLayout>
 
         <ScrollView
             android:layout_width="match_parent"
-            android:layout_height="160dp">
+            android:layout_height="180dp"
+            android:animateLayoutChanges="true">
 
             <LinearLayout
                 android:id="@+id/membersContainer"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"/>
+                android:orientation="vertical"
+                android:animateLayoutChanges="true"/>
 
         </ScrollView>
 
     </LinearLayout>
 
-    <!-- بخش دکمه PTT -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
@@ -125,12 +129,20 @@
         android:orientation="vertical">
 
         <FrameLayout
-            android:layout_width="180dp"
-            android:layout_height="180dp"
+            android:layout_width="200dp"
+            android:layout_height="200dp"
             android:layout_gravity="center_horizontal">
 
             <View
                 android:id="@+id/pttRipple3"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:layout_gravity="center"
+                android:background="@drawable/bg_ptt_outer"
+                android:alpha="0"/>
+
+            <View
+                android:id="@+id/pttRipple2"
                 android:layout_width="180dp"
                 android:layout_height="180dp"
                 android:layout_gravity="center"
@@ -138,31 +150,25 @@
                 android:alpha="0"/>
 
             <View
-                android:id="@+id/pttRipple2"
+                android:id="@+id/pttOuter"
                 android:layout_width="160dp"
                 android:layout_height="160dp"
                 android:layout_gravity="center"
-                android:background="@drawable/bg_ptt_outer"
-                android:alpha="0"/>
-
-            <View
-                android:id="@+id/pttOuter"
-                android:layout_width="140dp"
-                android:layout_height="140dp"
-                android:layout_gravity="center"
                 android:background="@drawable/bg_ptt_outer"/>
 
-            <TextView
+            <ImageButton
                 android:id="@+id/btnPTT"
-                android:layout_width="100dp"
-                android:layout_height="100dp"
+                android:layout_width="120dp"
+                android:layout_height="120dp"
                 android:layout_gravity="center"
                 android:background="@drawable/ripple_ptt"
+                android:src="@drawable/ic_mic"
+                app:tint="@color/white"
+                android:scaleType="centerInside"
+                android:padding="28dp"
                 android:clickable="true"
                 android:focusable="true"
-                android:gravity="center"
-                android:text="🎤"
-                android:textSize="36sp"/>
+                android:contentDescription="@string/hold_to_speak"/>
 
         </FrameLayout>
 
@@ -171,22 +177,20 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/hold_to_speak"
-            android:textSize="12sp"
+            android:textSize="13sp"
             android:textColor="@color/text_hint"
-            android:layout_marginTop="14dp"/>
+            android:layout_marginTop="16dp"/>
 
     </LinearLayout>
 
-    <!-- بخش پایین: حالت میکروفون + خروج -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:paddingStart="20dp"
         android:paddingEnd="20dp"
-        android:paddingBottom="20dp">
+        android:paddingBottom="24dp">
 
-        <!-- کارت حالت میکروفون -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -201,31 +205,32 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="@string/mic_mode"
-                android:textSize="13sp"
+                android:textSize="14sp"
                 android:textColor="@color/text_primary"/>
 
-            <!-- دکمه تگل حالت میکروفون -->
             <TextView
                 android:id="@+id/btnMicToggle"
                 android:layout_width="wrap_content"
-                android:layout_height="36dp"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
                 android:gravity="center"
                 android:text="@string/push_to_talk"
-                android:textSize="11sp"
+                android:textSize="12sp"
+                android:textStyle="bold"
                 android:textColor="@color/white"
-                android:paddingStart="14dp"
-                android:paddingEnd="14dp"
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp"
+                android:background="@drawable/bg_button_primary"
                 android:clickable="true"
-                android:focusable="true"
-                android:background="@drawable/bg_button_primary"/>
+                android:focusable="true"/>
 
         </LinearLayout>
 
-        <!-- دکمه خروج -->
         <TextView
             android:id="@+id/btnLeaveRoom"
             android:layout_width="match_parent"
-            android:layout_height="48dp"
+            android:layout_height="wrap_content"
+            android:minHeight="48dp"
             android:text="@string/leave_room"
             android:textSize="14sp"
             android:textColor="@color/danger_text"

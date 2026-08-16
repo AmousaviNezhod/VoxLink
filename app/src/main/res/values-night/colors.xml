@@ -1,13 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Dark mode palette (fully black) - overrides in night mode -->
-    <color name="bg_primary">#000000</color>
-    <color name="bg_card">#0A0A0A</color>
-    <color name="glass_bg">#080808</color>
-    <color name="glass_border">#1A1A1A</color>
-    <color name="glass_stroke">#252525</color>
-    <color name="text_primary">#FFFFFF</color>
-    <color name="text_secondary">#9494AA</color>
-    <color name="text_hint">#4A4A5A</color>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+
+    <color name="accent_purple">#818CF8</color>
+    <color name="accent_violet">#A78BFA</color>
+    <color name="accent_green">#4ADE80</color>
+    <color name="accent_red">#F87171</color>
+    <color name="accent_orange">#FBBF24</color>
+
+    <color name="bg_primary">#0B0B14</color>
+    <color name="bg_card">#141426</color>
+    <color name="glass_bg">#1A1A2E</color>
+    <color name="glass_border">#2A2A40</color>
+    <color name="glass_stroke">#3A3A55</color>
+    <color name="text_primary">#F0F0F5</color>
+    <color name="text_secondary">#A0A0B8</color>
+    <color name="text_hint">#6A6A85</color>
+
     <color name="danger_text">#FF6B6B</color>
 </resources>

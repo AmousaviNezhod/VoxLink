@@ -1,24 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:background="@drawable/bg_drawer">
 
-    <!-- هدر کشو -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:padding="24dp"
-        android:paddingTop="40dp">
+        android:paddingTop="48dp">
+
+        <ImageView
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:src="@drawable/ic_host"
+            app:tint="@color/accent_purple"
+            android:contentDescription="@string/app_name"
+            android:layout_marginBottom="12dp"/>
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="VoxLink"
-            android:textSize="26sp"
+            android:text="@string/app_name"
+            android:textSize="28sp"
             android:textColor="@color/accent_purple"
             android:textStyle="bold"
             android:letterSpacing="-0.02"/>
@@ -38,26 +46,24 @@
         android:layout_height="1dp"
         android:background="@color/glass_border"/>
 
-    <!-- تنظیمات -->
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1">
+        android:layout_weight="1"
+        android:padding="16dp">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:padding="16dp">
+            android:orientation="vertical">
 
-            <!-- حالت رنگی -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
                 android:gravity="center_vertical"
                 android:background="@drawable/bg_settings_card"
-                android:padding="14dp"
+                android:padding="16dp"
                 android:layout_marginBottom="12dp">
 
                 <TextView
@@ -71,50 +77,39 @@
                 <androidx.appcompat.widget.SwitchCompat
                     android:id="@+id/switchDarkMode"
                     android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"/>
+                    android:layout_height="wrap_content"
+                    android:minHeight="48dp"
+                    android:padding="12dp"/>
 
             </LinearLayout>
 
-            <!-- نام کاربری -->
-            <LinearLayout
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/tilUsername"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:background="@drawable/bg_settings_card"
-                android:padding="14dp"
-                android:layout_marginBottom="12dp">
+                android:layout_marginBottom="12dp"
+                app:hintEnabled="true"
+                app:boxBackgroundMode="outline"
+                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                android:hint="@string/username">
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/username"
-                    android:textSize="11sp"
-                    android:textColor="@color/text_hint"
-                    android:layout_marginBottom="8dp"/>
-
-                <EditText
+                <com.google.android.material.textfield.TextInputEditText
                     android:id="@+id/etUsername"
                     android:layout_width="match_parent"
-                    android:layout_height="40dp"
-                    android:background="@drawable/bg_settings_card"
-                    android:hint="@string/enter_username"
-                    android:textColorHint="@color/text_hint"
-                    android:textColor="@color/text_primary"
-                    android:textSize="14sp"
-                    android:paddingStart="12dp"
-                    android:paddingEnd="12dp"
+                    android:layout_height="wrap_content"
+                    android:inputType="textPersonName"
                     android:singleLine="true"
-                    android:inputType="textPersonName"/>
+                    android:textColor="@color/text_primary"
+                    android:textSize="14sp"/>
 
-            </LinearLayout>
+            </com.google.android.material.textfield.TextInputLayout>
 
-            <!-- توسعه‌دهنده -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
                 android:background="@drawable/bg_settings_card"
-                android:padding="14dp">
+                android:padding="16dp">
 
                 <TextView
                     android:layout_width="wrap_content"
@@ -136,12 +131,18 @@
                     android:id="@+id/tvGithubLink"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:minHeight="48dp"
+                    android:gravity="center_vertical"
                     android:text="@string/github_link"
                     android:textSize="12sp"
                     android:textColor="@color/accent_purple"
                     android:layout_marginTop="4dp"
                     android:clickable="true"
-                    android:focusable="true"/>
+                    android:focusable="true"
+                    android:background="?attr/selectableItemBackground"
+                    android:paddingStart="4dp"
+                    android:paddingEnd="4dp"
+                    android:contentDescription="@string/github_link"/>
 
             </LinearLayout>
 
@@ -149,7 +150,6 @@
 
     </ScrollView>
 
-    <!-- فوتر -->
     <View
         android:layout_width="match_parent"
         android:layout_height="1dp"
@@ -158,10 +158,10 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="VoxLink v1.0"
+        android:text="@string/app_name"
         android:textSize="11sp"
         android:textColor="@color/text_hint"
         android:gravity="center"
-        android:padding="12dp"/>
+        android:padding="16dp"/>
 
 </LinearLayout>
