@@ -134,17 +134,24 @@ public class DiscoveryManager {
             clientSocket.setReuseAddress(true);
             clientSocket.bind(new InetSocketAddress(0));
             clientSocket.setBroadcast(true);
-            clientSocket.setSoTimeout(3000);
+            clientSocket.setSoTimeout(1000);
 
             sendProbe();
 
             byte[] buf = new byte[256];
             long start = System.currentTimeMillis();
+            long lastProbe = start;
 
             while (isDiscovering && !Thread.currentThread().isInterrupted()) {
-                if (System.currentTimeMillis() - start > 10000) {
+                long now = System.currentTimeMillis();
+                if (now - start > 10000) {
                     if (listener != null) listener.onError("Discovery timeout");
                     break;
+                }
+
+                if (now - lastProbe >= 1000) {
+                    sendProbe();
+                    lastProbe = now;
                 }
 
                 try {
@@ -177,9 +184,8 @@ public class DiscoveryManager {
                         }
                         break;
                     }
-                } catch (SocketTimeoutException e) {
-                    if (listener != null) listener.onError("Discovery timeout");
-                    break;
+                } catch (SocketTimeoutException ignored) {
+                    // Continue loop and resend probe if needed.
                 }
             }
         } catch (Exception e) {

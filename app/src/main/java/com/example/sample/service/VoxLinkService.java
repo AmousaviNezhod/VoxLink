@@ -738,15 +738,24 @@ public class VoxLinkService extends Service {
     }
 
     private void sendMemberInfo() {
-        if (udpSender == null || !udpSender.isReady() || username == null) return;
-        byte[] nameBytes = username.getBytes(StandardCharsets.UTF_8);
-        int len = Math.min(nameBytes.length, 255);
-        byte[] payload = new byte[1 + 4 + 1 + len];
-        payload[0] = Constants.PACKET_MEMBER_INFO;
-        writeInt(payload, 1, mySenderId);
-        payload[5] = (byte) len;
-        System.arraycopy(nameBytes, 0, payload, 6, len);
-        udpSender.sendControl(payload);
+        if (udpSender == null || !udpSender.isReady()) return;
+        if (room == null || room.members.isEmpty()) {
+            serviceHandler.postDelayed(this::sendMemberInfo, Constants.MEMBER_INFO_INTERVAL_MS);
+            return;
+        }
+        for (Member m : room.members.values()) {
+            String name = (m.id == mySenderId) ? username : m.username;
+            if (name == null) name = "User " + m.id;
+            byte[] nameBytes = name.getBytes(StandardCharsets.UTF_8);
+            int len = Math.min(nameBytes.length, 255);
+            byte[] payload = new byte[1 + 4 + 1 + len];
+            payload[0] = Constants.PACKET_MEMBER_INFO;
+            writeInt(payload, 1, m.id);
+            payload[5] = (byte) len;
+            System.arraycopy(nameBytes, 0, payload, 6, len);
+            udpSender.sendControl(payload);
+        }
+        serviceHandler.postDelayed(this::sendMemberInfo, Constants.MEMBER_INFO_INTERVAL_MS);
     }
 
     private void sendMemberJoined(int id) {

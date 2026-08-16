@@ -16,6 +16,7 @@ public class Constants {
     public static final int MEMBER_TIMEOUT_MS = 8000;
     public static final int MEMBER_CHECK_INTERVAL_MS = 2500;
     public static final int PING_INTERVAL_MS = 1500;
+    public static final int MEMBER_INFO_INTERVAL_MS = 2500;
 
     // Control packet type bytes (shared between network/service and UI)
     public static final byte PACKET_PING_CLIENT = 0x01;
