@@ -97,6 +97,7 @@ public class VoxLinkService extends Service {
         void onRoomDestroyed();
         void onError(String message);
         void onBanned();
+        void onKicked();
     }
 
     public class LocalBinder extends Binder {
@@ -656,13 +657,26 @@ public class VoxLinkService extends Service {
     }
 
     private void handleMuteMember(int senderId, int targetId, boolean muted) {
+        // Only the host may mute members. Validate that the packet came from the host.
+        boolean senderIsHost = (isHost && senderId == mySenderId) ||
+                (room.hostId > 0 && senderId == room.hostId);
+        if (!senderIsHost) return;
+
         if (targetId == mySenderId) {
-            if (isHost && senderId != mySenderId) return;
-            if (!isHost && room.hostId > 0 && senderId != room.hostId) return;
             setLocalMuted(muted);
-        } else if (isHost) {
+            // Keep our own Member flag in sync so the UI shows the mute indicator.
+            Member me = room.members.get(mySenderId);
+            if (me != null) {
+                me.isMuted.set(muted);
+                notifyMemberUpdated(me);
+            }
+        } else {
+            // Propagate the mute state to every client so the indicator is consistent.
             Member m = room.members.get(targetId);
-            if (m != null) m.isMuted.set(muted);
+            if (m != null) {
+                m.isMuted.set(muted);
+                notifyMemberUpdated(m);
+            }
         }
     }
 
@@ -670,6 +684,7 @@ public class VoxLinkService extends Service {
         if (targetId == mySenderId) {
             if (isHost && senderId != mySenderId) return;
             if (!isHost && room.hostId > 0 && senderId != room.hostId) return;
+            notifyKicked();
             leaveRoom();
         } else if (isHost && senderId == mySenderId) {
             removeMember(targetId);
@@ -789,6 +804,19 @@ public class VoxLinkService extends Service {
     private void notifyBanned() {
         if (listener != null) {
             mainHandler.post(() -> { if (listener != null) listener.onBanned(); });
+        }
+    }
+
+    private void notifyKicked() {
+        if (listener != null) {
+            mainHandler.post(() -> { if (listener != null) listener.onKicked(); });
+        }
+    }
+
+    private void notifyMemberUpdated(Member member) {
+        if (listener != null) {
+            final Member m = member;
+            mainHandler.post(() -> { if (listener != null) listener.onMemberJoined(m); });
         }
     }
 

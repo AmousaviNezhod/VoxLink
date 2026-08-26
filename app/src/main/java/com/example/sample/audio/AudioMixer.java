@@ -153,20 +153,54 @@ public class AudioMixer {
     }
 
     private static class JitterBuffer {
-        private final TreeMap<Integer, short[]> buffer = new TreeMap<>();
-        private Integer nextPlaySeq;
+        private final TreeMap<Long, short[]> buffer = new TreeMap<>();
+        private Long nextPlaySeq;
+        private long lastNormalizedSeq = -1;
         private long lastPacketMs = System.currentTimeMillis();
         private int missedCount = 0;
+
+        /**
+         * Convert a 16-bit wire sequence number into a monotonically increasing
+         * {@code long} so that the jitter buffer keeps working after the 16-bit
+         * sequence wraps (which happens roughly every 21 minutes at 50 pkt/s).
+         * Without this, post-wrap packets are rejected forever and audio goes
+         * permanently silent for the affected sender.
+         */
+        private long normalize(int sequence) {
+            long seq = sequence & 0xFFFFL;
+            if (lastNormalizedSeq < 0) {
+                return seq;
+            }
+            long lastLow = lastNormalizedSeq & 0xFFFFL;
+            long base = lastNormalizedSeq - lastLow;
+            long candidate = base + seq;
+            long delta = candidate - lastNormalizedSeq;
+            if (delta < -32768L) {
+                // Wrapped forward: the new packet is just past the 65535 boundary.
+                candidate += 65536L;
+            } else if (delta > 32768L) {
+                // Late packet that belongs to the previous wrap cycle.
+                candidate -= 65536L;
+            }
+            return candidate;
+        }
 
         synchronized void enqueue(int sequence, short[] frame) {
             lastPacketMs = System.currentTimeMillis();
 
+            long norm = normalize(sequence);
+
             if (nextPlaySeq != null) {
-                if (sequence < nextPlaySeq - JITTER_MAX_LATE) return;
-                if (sequence > nextPlaySeq + JITTER_MAX_FUTURE) return;
+                long delta = norm - nextPlaySeq;
+                if (delta < -JITTER_MAX_LATE) return;
+                if (delta > JITTER_MAX_FUTURE) return;
             }
 
-            buffer.put(sequence, frame);
+            // Only advance the wrap-detection reference for accepted packets so
+            // that a burst of rejected late packets cannot corrupt normalization.
+            lastNormalizedSeq = norm;
+
+            buffer.put(norm, frame);
 
             // Cap absolute buffer size to avoid memory growth during large bursts.
             if (buffer.size() > MAX_BUFFER_SIZE) {
@@ -197,16 +231,17 @@ public class AudioMixer {
             }
 
             // Expected frame is missing. Wait a few cycles if a future frame isn't too far ahead.
-            Integer firstFuture = buffer.ceilingKey(nextPlaySeq);
+            Long firstFuture = buffer.ceilingKey(nextPlaySeq);
             if (firstFuture != null) {
-                int gap = firstFuture - nextPlaySeq;
+                long gap = firstFuture - nextPlaySeq;
                 if (gap <= MAX_MISSED_BEFORE_SKIP && missedCount < MAX_MISSED_BEFORE_SKIP) {
                     missedCount++;
                     return null; // return silence and wait
                 }
                 // Gap too large or we've waited enough: skip to the first available frame.
                 nextPlaySeq = firstFuture;
-                frame = buffer.remove(nextPlaySeq++);
+                frame = buffer.remove(nextPlaySeq);
+                nextPlaySeq++;
                 missedCount = 0;
                 return frame;
             }

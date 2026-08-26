@@ -154,6 +154,14 @@ public class VoiceRoomActivity extends AppCompatActivity {
         }
 
         @Override
+        public void onKicked() {
+            runOnUiThread(() -> {
+                VoxToast.error(VoiceRoomActivity.this, getString(R.string.kicked_message), 4000);
+                finishRoom();
+            });
+        }
+
+        @Override
         public void onError(String message) {
             runOnUiThread(() -> {
                 VoxToast.error(VoiceRoomActivity.this, message, 4500);

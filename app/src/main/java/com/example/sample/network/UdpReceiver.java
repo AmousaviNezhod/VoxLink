@@ -137,10 +137,11 @@ public class UdpReceiver {
                     if (audioPacketListener != null) {
                         audioPacketListener.onAudioPacket(senderId, sequence, payload);
                     }
-                }
-
-                if (audioReceiveListener != null) {
-                    audioReceiveListener.onAudioReceived(senderId, payload);
+                    // Only forward audio payloads to the legacy listener; control
+                    // packets must never be played back as audio.
+                    if (audioReceiveListener != null) {
+                        audioReceiveListener.onAudioReceived(senderId, payload);
+                    }
                 }
 
             } catch (SocketTimeoutException e) {
